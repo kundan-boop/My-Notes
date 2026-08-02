@@ -1,0 +1,6 @@
+{
+  "name": "My Notes",
+  "description": "Full-featured offline-first personal notes application with rich formatting, checklists, voice notes, color tags, reminders, search, and backup.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

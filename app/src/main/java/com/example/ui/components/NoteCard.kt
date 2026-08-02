@@ -1,0 +1,376 @@
+package com.example.ui.components
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.Unarchive
+import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.example.data.local.ChecklistItem
+import com.example.data.local.Converters
+import com.example.data.local.NoteEntity
+import com.example.ui.theme.NoteColors
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun NoteCard(
+    note: NoteEntity,
+    onClick: () -> Unit,
+    onTogglePin: () -> Unit,
+    onToggleArchive: () -> Unit,
+    onMoveToTrash: () -> Unit,
+    onColorPickRequest: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    val darkTheme = isSystemInDarkTheme()
+    val context = LocalContext.current
+
+    val preset = NoteColors.getPreset(note.colorHex)
+    val cardBg = if (preset.id == "default") {
+        MaterialTheme.colorScheme.surface
+    } else {
+        if (darkTheme) preset.darkBg else preset.lightBg
+    }
+
+    val cardBorder = if (preset.id == "default") {
+        MaterialTheme.colorScheme.outlineVariant
+    } else {
+        if (darkTheme) preset.darkBorder else preset.lightBorder
+    }
+
+    val textColor = if (preset.id == "default") {
+        MaterialTheme.colorScheme.onSurface
+    } else {
+        if (darkTheme) Color(0xFFF1F5F9) else Color(0xFF0F172A)
+    }
+
+    val checklistItems = remember(note.checklistJson) {
+        Converters.jsonToChecklist(note.checklistJson)
+    }
+
+    val tagNames = remember(note.tagsJson) {
+        Converters.jsonToStringList(note.tagsJson)
+    }
+
+    val attachmentPaths = remember(note.attachmentsJson) {
+        Converters.jsonToStringList(note.attachmentsJson)
+    }
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .border(1.dp, cardBorder, RoundedCornerShape(18.dp))
+            .clickable { onClick() }
+            .testTag("note_card_${note.id}"),
+        colors = CardDefaults.cardColors(containerColor = cardBg),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+        ) {
+            // Header: Title + Pin / Menu
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                if (note.title.isNotBlank()) {
+                    Text(
+                        text = note.title,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = textColor,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                } else {
+                    Spacer(Modifier.weight(1f))
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onTogglePin,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("pin_note_button_${note.id}")
+                    ) {
+                        Icon(
+                            imageVector = if (note.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                            contentDescription = if (note.isPinned) "Unpin Note" else "Pin Note",
+                            tint = if (note.isPinned) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.6f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    Box {
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("note_menu_button_${note.id}")
+                        ) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "More Options",
+                                tint = textColor.copy(alpha = 0.6f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(if (note.isPinned) "Unpin" else "Pin") },
+                                onClick = {
+                                    showMenu = false
+                                    onTogglePin()
+                                },
+                                leadingIcon = { Icon(Icons.Filled.PushPin, contentDescription = null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(if (note.isArchived) "Unarchive" else "Archive") },
+                                onClick = {
+                                    showMenu = false
+                                    onToggleArchive()
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        if (note.isArchived) Icons.Default.Unarchive else Icons.Default.Archive,
+                                        contentDescription = null
+                                    )
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Color Label") },
+                                onClick = {
+                                    showMenu = false
+                                    onColorPickRequest()
+                                },
+                                leadingIcon = { Icon(Icons.Default.Palette, contentDescription = null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Move to Trash") },
+                                onClick = {
+                                    showMenu = false
+                                    onMoveToTrash()
+                                },
+                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Image Preview Grid
+            if (attachmentPaths.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    attachmentPaths.take(3).forEach { path ->
+                        val file = File(path)
+                        if (file.exists()) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(context)
+                                    .data(file)
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = "Attachment preview",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(80.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Voice Note Indicator
+            if (note.type == "voice" && !note.audioPath.isNullOrBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Mic,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "Voice Recording Note",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+            }
+
+            // Checklist Preview Mode
+            if (note.type == "checklist" && checklistItems.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    checklistItems.take(4).forEach { item ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                imageVector = if (item.isChecked) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                contentDescription = null,
+                                tint = if (item.isChecked) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.5f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = item.text,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    textDecoration = if (item.isChecked) TextDecoration.LineThrough else TextDecoration.None
+                                ),
+                                color = if (item.isChecked) textColor.copy(alpha = 0.5f) else textColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    if (checklistItems.size > 4) {
+                        Text(
+                            text = "+ ${checklistItems.size - 4} more items",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = textColor.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            } else if (note.content.isNotBlank()) {
+                // Text Content
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = note.content,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = textColor.copy(alpha = 0.85f),
+                    maxLines = 6,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // Tag Chips & Reminder Pill
+            if (tagNames.isNotEmpty() || note.reminderAt != null) {
+                Spacer(Modifier.height(10.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (note.reminderAt != null) {
+                        val sdf = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Notifications,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = sdf.format(Date(note.reminderAt)),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                            }
+                        }
+                    }
+
+                    tagNames.forEach { tagName ->
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest
+                        ) {
+                            Text(
+                                text = "#$tagName",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
