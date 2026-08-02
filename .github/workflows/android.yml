@@ -21,10 +21,17 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'gradle'
 
-      - name: Make gradlew executable
-        run: chmod +x gradlew
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Ensure valid Gradle Wrapper
+        run: |
+          if ! java -jar gradle/wrapper/gradle-wrapper.jar --version > /dev/null 2>&1; then
+            echo "Gradle wrapper jar is missing or corrupted. Regenerating wrapper..."
+            gradle wrapper
+          fi
+          chmod +x gradlew
 
       - name: Prepare environment & keystore
         run: |
