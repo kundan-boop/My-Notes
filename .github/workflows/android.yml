@@ -25,14 +25,14 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.10'
+          gradle-version: '9.3.1'
           validate-wrappers: false
 
       - name: Ensure valid Gradle Wrapper
         run: |
           if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ] || ! java -jar gradle/wrapper/gradle-wrapper.jar --version > /dev/null 2>&1; then
-            echo "Gradle wrapper jar is missing or corrupted. Regenerating wrapper..."
-            gradle wrapper --gradle-version 8.10
+            echo "Regenerating wrapper for Gradle 9.3.1..."
+            gradle wrapper --gradle-version 9.3.1
           fi
           chmod +x gradlew
 

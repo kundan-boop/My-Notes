@@ -95,13 +95,21 @@ import com.example.data.local.ChecklistItem
 import com.example.data.local.Converters
 import com.example.data.local.NoteEntity
 import com.example.ui.components.ColorPicker
+import com.example.ui.components.RichTextEditorState
+import com.example.ui.components.RichTextEditorWebView
 import com.example.ui.components.RichTextToolbar
 import com.example.ui.components.TagPickerDialog
 import com.example.ui.components.VoiceNotePlayerBar
+import com.example.ui.components.rememberRichTextEditorState
 import com.example.ui.theme.NoteColors
 import com.example.ui.viewmodel.NotesViewModel
+import com.example.util.ActiveFormats
+import com.example.util.FontSizePreset
 import com.example.util.ImageUtils
+import com.example.util.RichTextHelper
+import com.example.util.RichTextRenderer
 import com.example.util.SpeechToTextManager
+import com.example.util.TextAlignmentPreset
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
@@ -126,7 +134,7 @@ fun NoteEditScreen(
 
     var note by remember { mutableStateOf<NoteEntity?>(null) }
     var title by remember { mutableStateOf("") }
-    var contentValue by remember { mutableStateOf(TextFieldValue("")) }
+    val richEditorState = rememberRichTextEditorState("")
     var type by remember { mutableStateOf("text") } // "text", "checklist", "voice"
     var checklistItems by remember { mutableStateOf<List<ChecklistItem>>(emptyList()) }
     var colorHex by remember { mutableStateOf("default") }
@@ -154,10 +162,8 @@ fun NoteEditScreen(
         val manager = SpeechToTextManager(
             context = context,
             onResult = { recognizedText ->
-                val currentText = contentValue.text
-                val separator = if (currentText.isBlank() || currentText.endsWith("\n") || currentText.endsWith(" ")) "" else " "
-                val newText = currentText + separator + recognizedText
-                contentValue = TextFieldValue(newText, TextRange(newText.length))
+                val separator = " "
+                richEditorState.insertText(separator + recognizedText)
             },
             onError = { error ->
                 Toast.makeText(context, "Voice dictation: $error", Toast.LENGTH_SHORT).show()
@@ -196,38 +202,6 @@ fun NoteEditScreen(
         }
     }
 
-    // Helper for formatting selection
-    fun applyFormatting(prefix: String, suffix: String) {
-        val sel = contentValue.selection
-        val text = contentValue.text
-        if (sel.start != sel.end) {
-            val selectedText = text.substring(sel.start, sel.end)
-            val newText = text.replaceRange(sel.start, sel.end, "$prefix$selectedText$suffix")
-            contentValue = TextFieldValue(
-                text = newText,
-                selection = TextRange(sel.start + prefix.length + selectedText.length + suffix.length)
-            )
-        } else {
-            val insert = "$prefix$suffix"
-            val newText = text.replaceRange(sel.start, sel.end, insert)
-            contentValue = TextFieldValue(
-                text = newText,
-                selection = TextRange(sel.start + prefix.length)
-            )
-        }
-    }
-
-    fun applyListPrefix(prefix: String) {
-        val sel = contentValue.selection
-        val text = contentValue.text
-        val newText = if (sel.start == 0 || text.getOrNull(sel.start - 1) == '\n') {
-            text.replaceRange(sel.start, sel.end, prefix)
-        } else {
-            text.replaceRange(sel.start, sel.end, "\n$prefix")
-        }
-        contentValue = TextFieldValue(text = newText, selection = TextRange(newText.length))
-    }
-
     // Load Note
     LaunchedEffect(noteId) {
         if (noteId == "new" || noteId.startsWith("new_")) {
@@ -249,7 +223,7 @@ fun NoteEditScreen(
             if (existing != null) {
                 note = existing
                 title = existing.title
-                contentValue = TextFieldValue(existing.content, TextRange(existing.content.length))
+                richEditorState.setHtmlContent(existing.content)
                 type = existing.type
                 checklistItems = Converters.jsonToChecklist(existing.checklistJson)
                 colorHex = existing.colorHex
@@ -267,8 +241,9 @@ fun NoteEditScreen(
 
     // Function to check if the note is completely blank
     fun isNoteBlank(): Boolean {
+        val plainText = RichTextRenderer.stripHtml(richEditorState.html)
         return title.isBlank() &&
-                contentValue.text.isBlank() &&
+                plainText.isBlank() &&
                 checklistItems.isEmpty() &&
                 attachmentPaths.isEmpty() &&
                 audioPath.isNullOrBlank()
@@ -291,7 +266,7 @@ fun NoteEditScreen(
 
     // Debounced Autosave on changes (only if note has content)
     LaunchedEffect(
-        title, contentValue.text, checklistItems, colorHex, tagNames,
+        title, richEditorState.html, checklistItems, colorHex, tagNames,
         isPinned, isArchived, isProtected, protectedPassword, reminderAt,
         attachmentPaths, audioPath, type
     ) {
@@ -303,7 +278,7 @@ fun NoteEditScreen(
         }
         val updated = currentNote.copy(
             title = title,
-            content = contentValue.text,
+            content = richEditorState.html,
             type = type,
             checklistJson = Converters.checklistToJson(checklistItems),
             colorHex = colorHex,
@@ -520,13 +495,23 @@ fun NoteEditScreen(
                     item {
                         RichTextToolbar(
                             isChecklistMode = (type == "checklist"),
+                            activeFormats = richEditorState.activeFormats,
+                            canUndo = richEditorState.canUndo,
+                            canRedo = richEditorState.canRedo,
+                            onUndo = { richEditorState.undo() },
+                            onRedo = { richEditorState.redo() },
                             onToggleChecklistMode = { type = "checklist" },
-                            onInsertBold = { applyFormatting("**", "**") },
-                            onInsertItalic = { applyFormatting("*", "*") },
-                            onApplyHighlight = { hex -> applyFormatting("<mark style=\"background:$hex\">", "</mark>") },
-                            onApplyTextColor = { hex -> applyFormatting("<span style=\"color:$hex\">", "</span>") },
-                            onInsertBulletList = { applyListPrefix("• ") },
-                            onInsertNumberedList = { applyListPrefix("1. ") },
+                            onToggleBold = { richEditorState.toggleBold() },
+                            onToggleItalic = { richEditorState.toggleItalic() },
+                            onToggleUnderline = { richEditorState.toggleUnderline() },
+                            onToggleStrikethrough = { richEditorState.toggleStrikethrough() },
+                            onApplyFontSize = { preset -> richEditorState.setFontSize(preset) },
+                            onApplyAlignment = { alignment -> richEditorState.setAlignment(alignment) },
+                            onApplyHighlight = { hex -> richEditorState.setHighlight(hex) },
+                            onApplyTextColor = { hex -> richEditorState.setTextColor(hex) },
+                            onInsertBulletList = { richEditorState.toggleBulletList() },
+                            onInsertNumberedList = { richEditorState.toggleNumberedList() },
+                            onClearFormatting = { richEditorState.clearFormatting() },
                             onStartSpeechToText = { startDictation() },
                             modifier = Modifier
                                 .padding(vertical = 4.dp)
@@ -797,26 +782,17 @@ fun NoteEditScreen(
                         }
                     }
                 } else {
-                    // Regular Note Body Text
+                    // Regular Note Body Rich Text Editor (True DOM-based ContentEditable Editor)
                     item {
                         Spacer(Modifier.height(4.dp))
-                        OutlinedTextField(
-                            value = contentValue,
-                            onValueChange = { contentValue = it },
-                            placeholder = {
-                                Text(
-                                    "Note content...",
-                                    style = MaterialTheme.typography.bodyLarge.copy(color = textColor.copy(alpha = 0.4f))
-                                )
-                            },
-                            textStyle = MaterialTheme.typography.bodyLarge.copy(color = textColor),
+                        RichTextEditorWebView(
+                            state = richEditorState,
+                            textColor = textColor,
+                            placeholderColor = textColor.copy(alpha = 0.4f),
+                            placeholder = "Note content...",
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .testTag("note_content_input"),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color.Transparent,
-                                unfocusedBorderColor = Color.Transparent
-                            )
+                                .testTag("note_content_input")
                         )
                     }
                 }
