@@ -21,6 +21,8 @@ data class NoteEntity(
     val attachmentsJson: String = "[]",
     val audioPath: String? = null,
     val audioDurationMs: Long = 0L,
+    val isProtected: Boolean = false,
+    val protectedPassword: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )

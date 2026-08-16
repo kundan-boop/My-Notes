@@ -1,8 +1,11 @@
 package com.example.ui.screens
 
+import android.Manifest
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -37,6 +40,7 @@ import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
@@ -45,7 +49,9 @@ import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tag
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -57,6 +63,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -75,9 +82,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.data.local.ChecklistItem
@@ -90,6 +101,7 @@ import com.example.ui.components.VoiceNotePlayerBar
 import com.example.ui.theme.NoteColors
 import com.example.ui.viewmodel.NotesViewModel
 import com.example.util.ImageUtils
+import com.example.util.SpeechToTextManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
@@ -114,22 +126,107 @@ fun NoteEditScreen(
 
     var note by remember { mutableStateOf<NoteEntity?>(null) }
     var title by remember { mutableStateOf("") }
-    var content by remember { mutableStateOf("") }
+    var contentValue by remember { mutableStateOf(TextFieldValue("")) }
     var type by remember { mutableStateOf("text") } // "text", "checklist", "voice"
     var checklistItems by remember { mutableStateOf<List<ChecklistItem>>(emptyList()) }
     var colorHex by remember { mutableStateOf("default") }
     var tagNames by remember { mutableStateOf<List<String>>(emptyList()) }
     var isPinned by remember { mutableStateOf(false) }
     var isArchived by remember { mutableStateOf(false) }
+    var isProtected by remember { mutableStateOf(false) }
+    var protectedPassword by remember { mutableStateOf<String?>(null) }
     var reminderAt by remember { mutableStateOf<Long?>(null) }
     var attachmentPaths by remember { mutableStateOf<List<String>>(emptyList()) }
     var audioPath by remember { mutableStateOf<String?>(null) }
 
     var showColorPicker by remember { mutableStateOf(false) }
     var showTagPicker by remember { mutableStateOf(false) }
+    var showProtectDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var newChecklistText by remember { mutableStateOf("") }
 
-    var isRecording by remember { mutableStateOf(false) }
+    var isRecordingAudio by remember { mutableStateOf(false) }
+    var isListeningSpeech by remember { mutableStateOf(false) }
+    var speechToTextManager by remember { mutableStateOf<SpeechToTextManager?>(null) }
+
+    // Initialize SpeechToTextManager
+    DisposableEffect(Unit) {
+        val manager = SpeechToTextManager(
+            context = context,
+            onResult = { recognizedText ->
+                val currentText = contentValue.text
+                val separator = if (currentText.isBlank() || currentText.endsWith("\n") || currentText.endsWith(" ")) "" else " "
+                val newText = currentText + separator + recognizedText
+                contentValue = TextFieldValue(newText, TextRange(newText.length))
+            },
+            onError = { error ->
+                Toast.makeText(context, "Voice dictation: $error", Toast.LENGTH_SHORT).show()
+                isListeningSpeech = false
+            },
+            onListeningStateChange = { listening ->
+                isListeningSpeech = listening
+            }
+        )
+        speechToTextManager = manager
+        onDispose {
+            manager.destroy()
+        }
+    }
+
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            speechToTextManager?.startListening()
+        } else {
+            Toast.makeText(context, "Microphone permission is required for speech dictation", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun startDictation() {
+        if (isListeningSpeech) {
+            speechToTextManager?.stopListening()
+        } else {
+            val permissionCheck = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
+            if (permissionCheck == PackageManager.PERMISSION_GRANTED) {
+                speechToTextManager?.startListening()
+            } else {
+                audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+    }
+
+    // Helper for formatting selection
+    fun applyFormatting(prefix: String, suffix: String) {
+        val sel = contentValue.selection
+        val text = contentValue.text
+        if (sel.start != sel.end) {
+            val selectedText = text.substring(sel.start, sel.end)
+            val newText = text.replaceRange(sel.start, sel.end, "$prefix$selectedText$suffix")
+            contentValue = TextFieldValue(
+                text = newText,
+                selection = TextRange(sel.start + prefix.length + selectedText.length + suffix.length)
+            )
+        } else {
+            val insert = "$prefix$suffix"
+            val newText = text.replaceRange(sel.start, sel.end, insert)
+            contentValue = TextFieldValue(
+                text = newText,
+                selection = TextRange(sel.start + prefix.length)
+            )
+        }
+    }
+
+    fun applyListPrefix(prefix: String) {
+        val sel = contentValue.selection
+        val text = contentValue.text
+        val newText = if (sel.start == 0 || text.getOrNull(sel.start - 1) == '\n') {
+            text.replaceRange(sel.start, sel.end, prefix)
+        } else {
+            text.replaceRange(sel.start, sel.end, "\n$prefix")
+        }
+        contentValue = TextFieldValue(text = newText, selection = TextRange(newText.length))
+    }
 
     // Load Note
     LaunchedEffect(noteId) {
@@ -144,7 +241,7 @@ fun NoteEditScreen(
             if (defaultType == "voice") {
                 val voiceFile = viewModel.audioRecorder.startRecording()
                 if (voiceFile != null) {
-                    isRecording = true
+                    isRecordingAudio = true
                 }
             }
         } else {
@@ -152,13 +249,15 @@ fun NoteEditScreen(
             if (existing != null) {
                 note = existing
                 title = existing.title
-                content = existing.content
+                contentValue = TextFieldValue(existing.content, TextRange(existing.content.length))
                 type = existing.type
                 checklistItems = Converters.jsonToChecklist(existing.checklistJson)
                 colorHex = existing.colorHex
                 tagNames = Converters.jsonToStringList(existing.tagsJson)
                 isPinned = existing.isPinned
                 isArchived = existing.isArchived
+                isProtected = existing.isProtected
+                protectedPassword = existing.protectedPassword
                 reminderAt = existing.reminderAt
                 attachmentPaths = Converters.jsonToStringList(existing.attachmentsJson)
                 audioPath = existing.audioPath
@@ -166,19 +265,53 @@ fun NoteEditScreen(
         }
     }
 
-    // Debounced Autosave on changes
-    LaunchedEffect(title, content, checklistItems, colorHex, tagNames, isPinned, isArchived, reminderAt, attachmentPaths, audioPath, type) {
+    // Function to check if the note is completely blank
+    fun isNoteBlank(): Boolean {
+        return title.isBlank() &&
+                contentValue.text.isBlank() &&
+                checklistItems.isEmpty() &&
+                attachmentPaths.isEmpty() &&
+                audioPath.isNullOrBlank()
+    }
+
+    // Safe exit handler that prevents saving blank notes (Requirement 8)
+    fun handleSafeExit() {
+        val currentNote = note
+        if (currentNote != null) {
+            if (isNoteBlank()) {
+                scope.launch {
+                    viewModel.repository.deletePermanently(currentNote.id)
+                    onBack()
+                }
+                return
+            }
+        }
+        onBack()
+    }
+
+    // Debounced Autosave on changes (only if note has content)
+    LaunchedEffect(
+        title, contentValue.text, checklistItems, colorHex, tagNames,
+        isPinned, isArchived, isProtected, protectedPassword, reminderAt,
+        attachmentPaths, audioPath, type
+    ) {
         val currentNote = note ?: return@LaunchedEffect
         delay(400) // 400ms debounce
+        if (isNoteBlank()) {
+            // Do not persist empty blank drafts
+            return@LaunchedEffect
+        }
         val updated = currentNote.copy(
             title = title,
-            content = content,
+            content = contentValue.text,
             type = type,
             checklistJson = Converters.checklistToJson(checklistItems),
             colorHex = colorHex,
             tagsJson = Converters.stringListToJson(tagNames),
             isPinned = isPinned,
             isArchived = isArchived,
+            isProtected = isProtected,
+            protectedPassword = protectedPassword,
             reminderAt = reminderAt,
             attachmentsJson = Converters.stringListToJson(attachmentPaths),
             audioPath = audioPath,
@@ -220,11 +353,23 @@ fun NoteEditScreen(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 title = {},
                 navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.testTag("note_edit_back")) {
+                    IconButton(onClick = { handleSafeExit() }, modifier = Modifier.testTag("note_edit_back")) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textColor)
                     }
                 },
                 actions = {
+                    // Lock / Protect Note toggle
+                    IconButton(
+                        onClick = { showProtectDialog = true },
+                        modifier = Modifier.testTag("note_protect_button")
+                    ) {
+                        Icon(
+                            imageVector = if (isProtected) Icons.Filled.Lock else Icons.Outlined.Lock,
+                            contentDescription = if (isProtected) "Protected Note" else "Protect Note",
+                            tint = if (isProtected) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.7f)
+                        )
+                    }
+
                     IconButton(onClick = { isPinned = !isPinned }) {
                         Icon(
                             imageVector = if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
@@ -250,15 +395,8 @@ fun NoteEditScreen(
                     }
 
                     IconButton(
-                        onClick = {
-                            val noteToTrash = note
-                            if (noteToTrash != null) {
-                                scope.launch {
-                                    viewModel.moveToTrash(noteToTrash.id)
-                                    onBack()
-                                }
-                            }
-                        }
+                        onClick = { showDeleteConfirmDialog = true },
+                        modifier = Modifier.testTag("note_delete_button")
                     ) {
                         Icon(Icons.Default.Delete, contentDescription = "Move to Trash", tint = MaterialTheme.colorScheme.error)
                     }
@@ -276,7 +414,7 @@ fun NoteEditScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
+                    .padding(horizontal = 16.dp)
             ) {
                 // Color Picker Row Expandable
                 if (showColorPicker) {
@@ -300,15 +438,24 @@ fun NoteEditScreen(
                 }
 
                 // Tag Chips Row
-                if (tagNames.isNotEmpty() || reminderAt != null) {
+                if (tagNames.isNotEmpty() || reminderAt != null || isProtected) {
                     item {
                         FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 8.dp)
+                                .padding(vertical = 6.dp)
                         ) {
+                            if (isProtected) {
+                                FilterChip(
+                                    selected = true,
+                                    onClick = { showProtectDialog = true },
+                                    label = { Text("Protected") },
+                                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                                )
+                            }
+
                             if (reminderAt != null) {
                                 val sdf = SimpleDateFormat("EEE, MMM dd HH:mm", Locale.getDefault())
                                 FilterChip(
@@ -348,13 +495,13 @@ fun NoteEditScreen(
                         placeholder = {
                             Text(
                                 "Title",
-                                style = MaterialTheme.typography.headlineLarge.copy(
+                                style = MaterialTheme.typography.headlineSmall.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = textColor.copy(alpha = 0.4f)
                                 )
                             )
                         },
-                        textStyle = MaterialTheme.typography.headlineLarge.copy(
+                        textStyle = MaterialTheme.typography.headlineSmall.copy(
                             fontWeight = FontWeight.Bold,
                             color = textColor
                         ),
@@ -368,18 +515,73 @@ fun NoteEditScreen(
                     )
                 }
 
+                // Rich Text Toolbar placed directly above note body (Requirement 1)
+                if (type != "checklist") {
+                    item {
+                        RichTextToolbar(
+                            isChecklistMode = (type == "checklist"),
+                            onToggleChecklistMode = { type = "checklist" },
+                            onInsertBold = { applyFormatting("**", "**") },
+                            onInsertItalic = { applyFormatting("*", "*") },
+                            onApplyHighlight = { hex -> applyFormatting("<mark style=\"background:$hex\">", "</mark>") },
+                            onApplyTextColor = { hex -> applyFormatting("<span style=\"color:$hex\">", "</span>") },
+                            onInsertBulletList = { applyListPrefix("• ") },
+                            onInsertNumberedList = { applyListPrefix("1. ") },
+                            onStartSpeechToText = { startDictation() },
+                            modifier = Modifier
+                                .padding(vertical = 4.dp)
+                                .testTag("rich_text_toolbar")
+                        )
+                    }
+                }
+
+                // Speech Dictation Active Banner
+                if (isListeningSpeech) {
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Mic,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "Listening... Speak clearly to dictate note.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(onClick = { speechToTextManager?.stopListening() }) {
+                                    Text("Done")
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Attachments Carousel
                 if (attachmentPaths.isNotEmpty()) {
                     item {
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(8.dp))
                         LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             items(attachmentPaths) { path ->
                                 val file = File(path)
                                 if (file.exists()) {
-                                    Box(modifier = Modifier.size(120.dp, 120.dp)) {
+                                    Box(modifier = Modifier.size(100.dp, 100.dp)) {
                                         AsyncImage(
                                             model = ImageRequest.Builder(context)
                                                 .data(file)
@@ -400,7 +602,7 @@ fun NoteEditScreen(
                                             modifier = Modifier
                                                 .align(Alignment.TopEnd)
                                                 .padding(4.dp)
-                                                .size(28.dp)
+                                                .size(24.dp)
                                                 .clip(CircleShape)
                                                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
                                         ) {
@@ -408,7 +610,7 @@ fun NoteEditScreen(
                                                 Icons.Default.Close,
                                                 contentDescription = "Remove image",
                                                 tint = MaterialTheme.colorScheme.error,
-                                                modifier = Modifier.size(16.dp)
+                                                modifier = Modifier.size(14.dp)
                                             )
                                         }
                                     }
@@ -419,9 +621,9 @@ fun NoteEditScreen(
                 }
 
                 // Live Recording Bar OR Voice Note Player Bar
-                if (isRecording) {
+                if (isRecordingAudio) {
                     item {
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(8.dp))
                         Surface(
                             shape = RoundedCornerShape(16.dp),
                             color = MaterialTheme.colorScheme.errorContainer,
@@ -430,7 +632,7 @@ fun NoteEditScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp),
+                                    .padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
@@ -439,11 +641,11 @@ fun NoteEditScreen(
                                         Icons.Default.Mic,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.onErrorContainer,
-                                        modifier = Modifier.size(24.dp)
+                                        modifier = Modifier.size(22.dp)
                                     )
-                                    Spacer(Modifier.width(12.dp))
+                                    Spacer(Modifier.width(10.dp))
                                     Text(
-                                        "Recording voice note...",
+                                        "Recording audio...",
                                         style = MaterialTheme.typography.titleMedium,
                                         color = MaterialTheme.colorScheme.onErrorContainer
                                     )
@@ -452,7 +654,7 @@ fun NoteEditScreen(
                                 IconButton(
                                     onClick = {
                                         val path = viewModel.audioRecorder.stopRecording()
-                                        isRecording = false
+                                        isRecordingAudio = false
                                         if (path != null) {
                                             audioPath = path
                                             type = "voice"
@@ -464,7 +666,7 @@ fun NoteEditScreen(
                                         Icons.Default.Stop,
                                         contentDescription = "Stop Recording",
                                         tint = MaterialTheme.colorScheme.onErrorContainer,
-                                        modifier = Modifier.size(28.dp)
+                                        modifier = Modifier.size(26.dp)
                                     )
                                 }
                             }
@@ -472,7 +674,7 @@ fun NoteEditScreen(
                     }
                 } else if (!audioPath.isNullOrBlank()) {
                     item {
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(8.dp))
                         VoiceNotePlayerBar(
                             audioPath = audioPath!!,
                             audioPlayer = viewModel.audioPlayer,
@@ -488,13 +690,22 @@ fun NoteEditScreen(
                 // Body Content OR Checklist Mode
                 if (type == "checklist") {
                     item {
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            "Checklist Items",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                            color = textColor.copy(alpha = 0.7f)
-                        )
                         Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "Checklist Items",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = textColor.copy(alpha = 0.7f)
+                            )
+                            TextButton(onClick = { type = "text" }) {
+                                Text("Switch to Text")
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
                     }
 
                     items(checklistItems, key = { it.id }) { item ->
@@ -502,7 +713,7 @@ fun NoteEditScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp)
+                                .padding(vertical = 2.dp)
                         ) {
                             Checkbox(
                                 checked = item.isChecked,
@@ -548,7 +759,7 @@ fun NoteEditScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 8.dp)
+                                .padding(top = 4.dp)
                         ) {
                             Icon(
                                 Icons.Default.Add,
@@ -588,10 +799,10 @@ fun NoteEditScreen(
                 } else {
                     // Regular Note Body Text
                     item {
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(4.dp))
                         OutlinedTextField(
-                            value = content,
-                            onValueChange = { content = it },
+                            value = contentValue,
+                            onValueChange = { contentValue = it },
                             placeholder = {
                                 Text(
                                     "Note content...",
@@ -613,19 +824,19 @@ fun NoteEditScreen(
                 item { Spacer(Modifier.height(24.dp)) }
             }
 
-            // Bottom Actions Toolbar (Images, Voice, Reminder, Format)
+            // Bottom Actions Toolbar (Images, Voice, Reminder)
             Surface(
-                tonalElevation = 6.dp,
+                tonalElevation = 4.dp,
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         IconButton(
                             onClick = { imagePickerLauncher.launch("image/*") },
                             modifier = Modifier.testTag("add_image_button")
@@ -635,11 +846,7 @@ fun NoteEditScreen(
 
                         IconButton(
                             onClick = {
-                                if (type == "checklist") {
-                                    type = "text"
-                                } else {
-                                    type = "checklist"
-                                }
+                                type = if (type == "checklist") "text" else "checklist"
                             }
                         ) {
                             Icon(
@@ -651,9 +858,9 @@ fun NoteEditScreen(
 
                         IconButton(
                             onClick = {
-                                if (isRecording) {
+                                if (isRecordingAudio) {
                                     val path = viewModel.audioRecorder.stopRecording()
-                                    isRecording = false
+                                    isRecordingAudio = false
                                     if (path != null) {
                                         audioPath = path
                                         type = "voice"
@@ -661,7 +868,7 @@ fun NoteEditScreen(
                                 } else {
                                     val file = viewModel.audioRecorder.startRecording()
                                     if (file != null) {
-                                        isRecording = true
+                                        isRecordingAudio = true
                                     }
                                 }
                             },
@@ -670,7 +877,7 @@ fun NoteEditScreen(
                             Icon(
                                 Icons.Default.Mic,
                                 contentDescription = "Record Voice",
-                                tint = if (isRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                                tint = if (isRecordingAudio) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                             )
                         }
 
@@ -718,7 +925,7 @@ fun NoteEditScreen(
                     }
 
                     Text(
-                        text = "Autosaved",
+                        text = if (isNoteBlank()) "Draft (unsaved)" else "Autosaved",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -741,5 +948,95 @@ fun NoteEditScreen(
                 onDismiss = { showTagPicker = false }
             )
         }
+
+        // Note Protection Dialog (Requirement 9)
+        if (showProtectDialog) {
+            var customPasswordInput by remember { mutableStateOf(protectedPassword ?: "") }
+            var setCustomPassword by remember { mutableStateOf(!protectedPassword.isNullOrBlank()) }
+
+            AlertDialog(
+                onDismissRequest = { showProtectDialog = false },
+                title = { Text(if (isProtected) "Note Protection Settings" else "Protect Note") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Protect this note with password or biometrics so its contents stay private.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Checkbox(
+                                checked = isProtected,
+                                onCheckedChange = { isProtected = it }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Enable Note Protection", fontWeight = FontWeight.SemiBold)
+                        }
+
+                        if (isProtected) {
+                            OutlinedTextField(
+                                value = customPasswordInput,
+                                onValueChange = { customPasswordInput = it },
+                                label = { Text("Specific Note Password (optional)") },
+                                placeholder = { Text("Leave blank to use App Lock") },
+                                singleLine = true,
+                                visualTransformation = PasswordVisualTransformation(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            protectedPassword = if (customPasswordInput.isNotBlank()) customPasswordInput else null
+                            showProtectDialog = false
+                        }
+                    ) {
+                        Text("Save")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showProtectDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        // Delete Confirmation Dialog (Requirement 7)
+        if (showDeleteConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeleteConfirmDialog = false },
+                title = { Text("Move note to Trash?") },
+                text = { Text("This note will be moved to the Trash. You can restore it anytime within 30 days.") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showDeleteConfirmDialog = false
+                            val noteToTrash = note
+                            if (noteToTrash != null) {
+                                scope.launch {
+                                    viewModel.moveToTrash(noteToTrash.id)
+                                    onBack()
+                                }
+                            } else {
+                                onBack()
+                            }
+                        }
+                    ) {
+                        Text("Move to Trash", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
     }
 }
+

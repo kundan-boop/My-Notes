@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
@@ -45,6 +47,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Tag
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -60,6 +63,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -72,8 +76,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.data.local.NoteEntity
@@ -96,6 +102,7 @@ fun NotesListScreen(
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     val activeNotes by viewModel.activeNotes.collectAsState()
     val viewMode by viewModel.viewMode.collectAsState()
@@ -104,11 +111,25 @@ fun NotesListScreen(
     val selectedTagFilter by viewModel.selectedTagFilter.collectAsState()
     val selectedColorFilter by viewModel.selectedColorFilter.collectAsState()
     val selectedTypeFilter by viewModel.selectedTypeFilter.collectAsState()
+    val unlockedNoteIds by viewModel.unlockedNoteIds.collectAsState()
 
     var colorPickNoteId by remember { mutableStateOf<String?>(null) }
+    var noteToUnlock by remember { mutableStateOf<NoteEntity?>(null) }
+    var unlockPasswordInput by remember { mutableStateOf("") }
+    var unlockErrorMessage by remember { mutableStateOf<String?>(null) }
 
     val pinnedNotes = remember(activeNotes) { activeNotes.filter { it.isPinned } }
     val otherNotes = remember(activeNotes) { activeNotes.filter { !it.isPinned } }
+
+    fun handleNoteClick(note: NoteEntity) {
+        if (note.isProtected && !unlockedNoteIds.contains(note.id)) {
+            noteToUnlock = note
+            unlockPasswordInput = ""
+            unlockErrorMessage = null
+        } else {
+            onNoteClick(note.id)
+        }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -422,9 +443,9 @@ fun NotesListScreen(
                         if (viewMode == "grid") {
                             LazyVerticalStaggeredGrid(
                                 columns = StaggeredGridCells.Fixed(2),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalItemSpacing = 12.dp,
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalItemSpacing = 8.dp,
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                                 modifier = Modifier.fillMaxSize()
                             ) {
                                 if (pinnedNotes.isNotEmpty()) {
@@ -433,13 +454,14 @@ fun NotesListScreen(
                                             text = "PINNED",
                                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                             color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.padding(vertical = 4.dp)
+                                            modifier = Modifier.padding(vertical = 2.dp)
                                         )
                                     }
                                     items(pinnedNotes, key = { it.id }) { note ->
                                         NoteCard(
                                             note = note,
-                                            onClick = { onNoteClick(note.id) },
+                                            isUnlocked = unlockedNoteIds.contains(note.id),
+                                            onClick = { handleNoteClick(note) },
                                             onTogglePin = { viewModel.togglePin(note.id) },
                                             onToggleArchive = { viewModel.toggleArchive(note.id) },
                                             onMoveToTrash = { viewModel.moveToTrash(note.id) },
@@ -451,7 +473,7 @@ fun NotesListScreen(
                                             text = "OTHERS",
                                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                             color = MaterialTheme.colorScheme.outline,
-                                            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+                                            modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
                                         )
                                     }
                                 }
@@ -459,7 +481,8 @@ fun NotesListScreen(
                                 items(otherNotes, key = { it.id }) { note ->
                                     NoteCard(
                                         note = note,
-                                        onClick = { onNoteClick(note.id) },
+                                        isUnlocked = unlockedNoteIds.contains(note.id),
+                                        onClick = { handleNoteClick(note) },
                                         onTogglePin = { viewModel.togglePin(note.id) },
                                         onToggleArchive = { viewModel.toggleArchive(note.id) },
                                         onMoveToTrash = { viewModel.moveToTrash(note.id) },
@@ -470,8 +493,8 @@ fun NotesListScreen(
                         } else {
                             // Single Column List
                             LazyColumn(
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                                 modifier = Modifier.fillMaxSize()
                             ) {
                                 if (pinnedNotes.isNotEmpty()) {
@@ -480,13 +503,14 @@ fun NotesListScreen(
                                             text = "PINNED",
                                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                             color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.padding(vertical = 4.dp)
+                                            modifier = Modifier.padding(vertical = 2.dp)
                                         )
                                     }
                                     items(pinnedNotes, key = { it.id }) { note ->
                                         NoteCard(
                                             note = note,
-                                            onClick = { onNoteClick(note.id) },
+                                            isUnlocked = unlockedNoteIds.contains(note.id),
+                                            onClick = { handleNoteClick(note) },
                                             onTogglePin = { viewModel.togglePin(note.id) },
                                             onToggleArchive = { viewModel.toggleArchive(note.id) },
                                             onMoveToTrash = { viewModel.moveToTrash(note.id) },
@@ -498,7 +522,7 @@ fun NotesListScreen(
                                             text = "OTHERS",
                                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                             color = MaterialTheme.colorScheme.outline,
-                                            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+                                            modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
                                         )
                                     }
                                 }
@@ -506,7 +530,8 @@ fun NotesListScreen(
                                 items(otherNotes, key = { it.id }) { note ->
                                     NoteCard(
                                         note = note,
-                                        onClick = { onNoteClick(note.id) },
+                                        isUnlocked = unlockedNoteIds.contains(note.id),
+                                        onClick = { handleNoteClick(note) },
                                         onTogglePin = { viewModel.togglePin(note.id) },
                                         onToggleArchive = { viewModel.toggleArchive(note.id) },
                                         onMoveToTrash = { viewModel.moveToTrash(note.id) },
@@ -558,4 +583,62 @@ fun NotesListScreen(
             }
         }
     }
+
+    // Protected Note Unlock Password Dialog (Requirement 9)
+    if (noteToUnlock != null) {
+        val target = noteToUnlock!!
+        AlertDialog(
+            onDismissRequest = { noteToUnlock = null },
+            icon = { Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Unlock Protected Note") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Enter password to view this protected note.")
+                    OutlinedTextField(
+                        value = unlockPasswordInput,
+                        onValueChange = {
+                            unlockPasswordInput = it
+                            unlockErrorMessage = null
+                        },
+                        label = { Text("Password") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        isError = unlockErrorMessage != null,
+                        supportingText = unlockErrorMessage?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val correctPass = target.protectedPassword
+                        val isValid = if (!correctPass.isNullOrBlank()) {
+                            unlockPasswordInput == correctPass
+                        } else {
+                            // If no specific password set, any non-empty input or unlock succeeds
+                            unlockPasswordInput.isNotBlank()
+                        }
+
+                        if (isValid) {
+                            viewModel.unlockNote(target.id)
+                            val destId = target.id
+                            noteToUnlock = null
+                            onNoteClick(destId)
+                        } else {
+                            unlockErrorMessage = "Incorrect password"
+                        }
+                    }
+                ) {
+                    Text("Unlock")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { noteToUnlock = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
+

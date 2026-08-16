@@ -110,6 +110,21 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val _userMessage = MutableSharedFlow<String>()
     val userMessage: SharedFlow<String> = _userMessage.asSharedFlow()
 
+    // Protected Notes session unlocked IDs
+    val unlockedNoteIds = MutableStateFlow<Set<String>>(emptySet())
+
+    fun unlockProtectedNote(noteId: String) {
+        unlockedNoteIds.value = unlockedNoteIds.value + noteId
+    }
+
+    fun unlockNote(noteId: String) {
+        unlockedNoteIds.value = unlockedNoteIds.value + noteId
+    }
+
+    fun isNoteUnlocked(noteId: String): Boolean {
+        return unlockedNoteIds.value.contains(noteId)
+    }
+
     // Voice recording status
     private val _isRecordingVoice = MutableStateFlow(false)
     val isRecordingVoice: StateFlow<Boolean> = _isRecordingVoice.asStateFlow()
@@ -250,6 +265,40 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             settingsRepository.updateLastBackupTime(System.currentTimeMillis())
         }
         return json
+    }
+
+    fun runDailyRotatingBackup(): Int {
+        var slotSaved = 1
+        kotlinx.coroutines.runBlocking {
+            val (notes, tags) = repository.getAllDataForBackup()
+            val currentSlot = settingsRepository.lastRotatingSlot.stateIn(viewModelScope).value
+            val nextSlot = if (currentSlot >= 7) 1 else currentSlot + 1
+            val (slot, path) = BackupManager.writeRotatingBackupSlot(getApplication(), notes, tags, nextSlot)
+            settingsRepository.setLastRotatingSlot(slot)
+            settingsRepository.updateLastBackupTime(System.currentTimeMillis())
+            slotSaved = slot
+        }
+        viewModelScope.launch {
+            _userMessage.emit("7-day rotating backup saved to Day-$slotSaved.json")
+        }
+        return slotSaved
+    }
+
+    fun restoreFromRotatingSlot(slot: Int) {
+        viewModelScope.launch {
+            val json = BackupManager.readRotatingBackupSlot(getApplication(), slot)
+            if (!json.isNullOrBlank()) {
+                val parsed = BackupManager.parseBackupJson(getApplication(), json)
+                if (parsed != null) {
+                    repository.restoreDataFromBackup(parsed.first, parsed.second)
+                    _userMessage.emit("Restored backup from Day-$slot.json (${parsed.first.size} notes)")
+                } else {
+                    _userMessage.emit("Failed to parse Day-$slot.json")
+                }
+            } else {
+                _userMessage.emit("No backup found in Day-$slot.json")
+            }
+        }
     }
 
     fun importBackupJson(jsonString: String) {
