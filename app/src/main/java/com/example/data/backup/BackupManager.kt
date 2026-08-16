@@ -43,6 +43,7 @@ data class BackupDataDto(
 data class BackupSlotInfo(
     val slotNumber: Int, // 1..7
     val fileName: String, // "Day-1.json"
+    val dayName: String, // "Sunday", "Monday", etc.
     val exists: Boolean,
     val lastModified: Long,
     val sizeBytes: Long
@@ -51,6 +52,25 @@ data class BackupSlotInfo(
 object BackupManager {
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val adapter = moshi.adapter(BackupDataDto::class.java)
+
+    fun getTodaySlot(): Int {
+        val cal = java.util.Calendar.getInstance()
+        // 1=Sunday, 2=Monday, 3=Tuesday, 4=Wednesday, 5=Thursday, 6=Friday, 7=Saturday
+        return cal.get(java.util.Calendar.DAY_OF_WEEK)
+    }
+
+    fun getSlotDayName(slot: Int): String {
+        return when (slot) {
+            1 -> "Sunday"
+            2 -> "Monday"
+            3 -> "Tuesday"
+            4 -> "Wednesday"
+            5 -> "Thursday"
+            6 -> "Friday"
+            7 -> "Saturday"
+            else -> "Day $slot"
+        }
+    }
 
     fun exportBackupJson(context: Context, notes: List<NoteEntity>, tags: List<TagEntity>): String {
         val backupNotes = notes.map { note ->
@@ -145,6 +165,7 @@ object BackupManager {
             BackupSlotInfo(
                 slotNumber = slot,
                 fileName = "Day-$slot.json",
+                dayName = getSlotDayName(slot),
                 exists = file.exists(),
                 lastModified = if (file.exists()) file.lastModified() else 0L,
                 sizeBytes = if (file.exists()) file.length() else 0L

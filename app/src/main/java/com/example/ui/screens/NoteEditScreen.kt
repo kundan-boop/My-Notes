@@ -95,12 +95,12 @@ import com.example.data.local.ChecklistItem
 import com.example.data.local.Converters
 import com.example.data.local.NoteEntity
 import com.example.ui.components.ColorPicker
-import com.example.ui.components.RichTextEditorState
-import com.example.ui.components.RichTextEditorWebView
+import com.example.ui.components.NativeRichTextEditor
+import com.example.ui.components.NativeRichTextEditorState
 import com.example.ui.components.RichTextToolbar
 import com.example.ui.components.TagPickerDialog
 import com.example.ui.components.VoiceNotePlayerBar
-import com.example.ui.components.rememberRichTextEditorState
+import com.example.ui.components.rememberNativeRichTextEditorState
 import com.example.ui.theme.NoteColors
 import com.example.ui.viewmodel.NotesViewModel
 import com.example.util.ActiveFormats
@@ -134,7 +134,7 @@ fun NoteEditScreen(
 
     var note by remember { mutableStateOf<NoteEntity?>(null) }
     var title by remember { mutableStateOf("") }
-    val richEditorState = rememberRichTextEditorState("")
+    val richEditorState = rememberNativeRichTextEditorState("")
     var type by remember { mutableStateOf("text") } // "text", "checklist", "voice"
     var checklistItems by remember { mutableStateOf<List<ChecklistItem>>(emptyList()) }
     var colorHex by remember { mutableStateOf("default") }
@@ -782,13 +782,12 @@ fun NoteEditScreen(
                         }
                     }
                 } else {
-                    // Regular Note Body Rich Text Editor (True DOM-based ContentEditable Editor)
+                    // Regular Note Body Native Rich Text Editor (100% Native Spannable Android Engine)
                     item {
                         Spacer(Modifier.height(4.dp))
-                        RichTextEditorWebView(
+                        NativeRichTextEditor(
                             state = richEditorState,
                             textColor = textColor,
-                            placeholderColor = textColor.copy(alpha = 0.4f),
                             placeholder = "Note content...",
                             modifier = Modifier
                                 .fillMaxWidth()

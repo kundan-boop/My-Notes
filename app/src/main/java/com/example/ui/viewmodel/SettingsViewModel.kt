@@ -97,6 +97,18 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         initialValue = "My Drive / MyNotes_Backups /"
     )
 
+    val driveFolderUri: StateFlow<String> = repository.driveFolderUri.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = ""
+    )
+
+    val autoBackupEnabled: StateFlow<Boolean> = repository.autoBackupEnabled.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = true
+    )
+
     val lastRotatingSlot: StateFlow<Int> = repository.lastRotatingSlot.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -164,6 +176,24 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun setDriveFolderName(name: String) {
         viewModelScope.launch {
             repository.setDriveFolderName(name)
+        }
+    }
+
+    fun setDriveFolderUri(uriString: String) {
+        viewModelScope.launch {
+            repository.setDriveFolderUri(uriString)
+        }
+    }
+
+    fun setAutoBackupEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setAutoBackupEnabled(enabled)
+        }
+    }
+
+    fun updateLastBackupTime(time: Long) {
+        viewModelScope.launch {
+            repository.updateLastBackupTime(time)
         }
     }
 

@@ -38,6 +38,8 @@ class SettingsRepository(private val context: Context) {
         // Rotating Google Drive / Cloud Backup
         val KEY_LAST_BACKUP_TIME = longPreferencesKey("last_backup_time")
         val KEY_DRIVE_FOLDER_NAME = stringPreferencesKey("drive_folder_name")
+        val KEY_DRIVE_FOLDER_URI = stringPreferencesKey("drive_folder_uri")
+        val KEY_AUTO_BACKUP_ENABLED = booleanPreferencesKey("auto_backup_enabled")
         val KEY_LAST_ROTATING_SLOT = intPreferencesKey("last_rotating_slot")
         val KEY_SCHEMA_VERSION = intPreferencesKey("schema_version")
     }
@@ -100,6 +102,14 @@ class SettingsRepository(private val context: Context) {
 
     val driveFolderName: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[KEY_DRIVE_FOLDER_NAME] ?: "My Drive / MyNotes_Backups /"
+    }
+
+    val driveFolderUri: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_DRIVE_FOLDER_URI] ?: ""
+    }
+
+    val autoBackupEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_AUTO_BACKUP_ENABLED] ?: true
     }
 
     val lastRotatingSlot: Flow<Int> = context.dataStore.data.map { prefs ->
@@ -172,6 +182,14 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setDriveFolderName(name: String) {
         context.dataStore.edit { prefs -> prefs[KEY_DRIVE_FOLDER_NAME] = name }
+    }
+
+    suspend fun setDriveFolderUri(uriString: String) {
+        context.dataStore.edit { prefs -> prefs[KEY_DRIVE_FOLDER_URI] = uriString }
+    }
+
+    suspend fun setAutoBackupEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs -> prefs[KEY_AUTO_BACKUP_ENABLED] = enabled }
     }
 
     suspend fun setLastRotatingSlot(slot: Int) {

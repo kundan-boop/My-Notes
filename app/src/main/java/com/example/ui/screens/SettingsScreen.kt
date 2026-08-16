@@ -59,8 +59,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudQueue
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import com.example.data.backup.BackupManager
+import com.example.data.backup.BackupSlotInfo
+import com.example.util.ShareAppHelper
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import com.example.ui.viewmodel.NotesViewModel
 import com.example.ui.viewmodel.SettingsViewModel
 
@@ -82,11 +100,25 @@ fun SettingsScreen(
     val securityQuestion by settingsViewModel.securityQuestion.collectAsState()
     val securityAnswer by settingsViewModel.securityAnswer.collectAsState()
     val viewMode by notesViewModel.viewMode.collectAsState()
+    val driveFolderName by settingsViewModel.driveFolderName.collectAsState()
+    val autoBackupEnabled by settingsViewModel.autoBackupEnabled.collectAsState()
+    val lastBackupTime by settingsViewModel.lastBackupTime.collectAsState()
+    val lastRotatingSlot by settingsViewModel.lastRotatingSlot.collectAsState()
+
+    val context = LocalContext.current
+    var slotsInfo by remember { mutableStateOf(BackupManager.getBackupSlotsInfo(context)) }
+    fun refreshSlots() {
+        slotsInfo = BackupManager.getBackupSlotsInfo(context)
+    }
 
     var showPinSetupDialog by remember { mutableStateOf(false) }
     var showProfileDialog by remember { mutableStateOf(false) }
     var showProtectedNotesPasswordDialog by remember { mutableStateOf(false) }
     var showSecurityQuestionDialog by remember { mutableStateOf(false) }
+    var showDriveFolderDialog by remember { mutableStateOf(false) }
+    var showSlotRestoreDialog by remember { mutableStateOf(false) }
+    var selectedRestoreSlot by remember { mutableStateOf<Int?>(null) }
+    var customFolderNameInput by remember(driveFolderName) { mutableStateOf(driveFolderName) }
 
     var pinInput by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf<String?>(null) }
@@ -105,6 +137,14 @@ fun SettingsScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack, modifier = Modifier.testTag("settings_back")) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = { ShareAppHelper.shareApp(context) },
+                        modifier = Modifier.testTag("settings_top_share_button")
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = "Share App")
                     }
                 }
             )
@@ -288,7 +328,237 @@ fun SettingsScreen(
                 }
             }
 
-            // 3. Theme Setting
+            // 3. Rotating 7-Day Google Drive Backup Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("drive_backup_card"),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CloudUpload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(12.dp))
+                            Text("7-Day Google Drive Backup", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Automatic rolling 7-day backups (Day-1.json to Day-7.json). Day 8 overwrites Day-1, preserving at most 7 backup files in your Google Drive folder.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(Modifier.height(14.dp))
+
+                    // Selected Folder Row
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text("Backup Folder", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                                    Text(
+                                        driveFolderName,
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                            FilledTonalButton(
+                                onClick = {
+                                    customFolderNameInput = driveFolderName
+                                    showDriveFolderDialog = true
+                                },
+                                modifier = Modifier.testTag("choose_drive_folder_button")
+                            ) {
+                                Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Choose")
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // Auto Daily Backup Toggle
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Automatic Daily Backup", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
+                            Text(
+                                "Automatically sync notes & media daily into selected folder",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = autoBackupEnabled,
+                            onCheckedChange = { enabled ->
+                                settingsViewModel.setAutoBackupEnabled(enabled)
+                            },
+                            modifier = Modifier.testTag("auto_backup_switch")
+                        )
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+
+                    // Last Written Slot & Timestamp Banner
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (lastRotatingSlot > 0) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f) else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                if (lastRotatingSlot > 0) Icons.Default.CloudDone else Icons.Default.CloudQueue,
+                                contentDescription = null,
+                                tint = if (lastRotatingSlot > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                if (lastRotatingSlot > 0 && lastBackupTime > 0) {
+                                    val sdf = SimpleDateFormat("MMM dd, yyyy 'at' HH:mm", Locale.getDefault())
+                                    Text(
+                                        "Last Written: Day-$lastRotatingSlot.json (${BackupManager.getSlotDayName(lastRotatingSlot)})",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        "Timestamp: ${sdf.format(Date(lastBackupTime))}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                } else {
+                                    Text(
+                                        "No backup slot written yet",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                    Text(
+                                        "Tap 'Backup Now' below to create Day-${BackupManager.getTodaySlot()}.json (${BackupManager.getSlotDayName(BackupManager.getTodaySlot())})",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+
+                    // 7-Slot Mini Grid
+                    Text("7-Day Slot Cycle", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold))
+                    Spacer(Modifier.height(6.dp))
+                    slotsInfo.forEach { slot ->
+                        val isLastWritten = slot.slotNumber == lastRotatingSlot && slot.exists
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isLastWritten) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = if (slot.exists) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                        contentDescription = null,
+                                        tint = if (slot.exists) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        "Day-${slot.slotNumber}.json (${slot.dayName})",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = if (isLastWritten) FontWeight.Bold else FontWeight.Normal)
+                                    )
+                                }
+                                Text(
+                                    text = if (slot.exists) {
+                                        val sdf = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
+                                        "${sdf.format(Date(slot.lastModified))} • ${(slot.sizeBytes / 1024).coerceAtLeast(1)} KB"
+                                    } else "Empty",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (isLastWritten) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+
+                    // Action Buttons: Backup Now & Restore
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                notesViewModel.runDailyRotatingBackup()
+                                refreshSlots()
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("settings_backup_now_button")
+                        ) {
+                            Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Backup Now")
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                refreshSlots()
+                                showSlotRestoreDialog = true
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("settings_restore_button")
+                        ) {
+                            Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Restore")
+                        }
+                    }
+                }
+            }
+
+            // 4. Theme Setting
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp)
@@ -392,9 +662,44 @@ fun SettingsScreen(
                 }
             }
 
-            // 6. About App Card
+            // 6. Share App Card
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("share_app_card"),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Share, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(12.dp))
+                        Text("Share App", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Share My Notes with friends and family via WhatsApp, Messages, Email, or other apps.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    Button(
+                        onClick = { ShareAppHelper.shareApp(context) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("share_app_button")
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Share App")
+                    }
+                }
+            }
+
+            // 7. About My Notes Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("about_app_card"),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
             ) {
@@ -404,10 +709,30 @@ fun SettingsScreen(
                         Spacer(Modifier.width(12.dp))
                         Text("About My Notes", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text("Version 2.0.0 (Native Android & Offline-First)", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(4.dp))
-                    Text("Complete personal notes application with rich text formatting, voice-to-text, protected notes, checklists, tags, 7-day rolling backups, and Material 3 design.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                    Spacer(Modifier.height(12.dp))
+
+                    Text(
+                        text = "My Notes",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Version 2.0.0",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Developed by Kundansinh Khant",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "A simple, secure notes app with rich formatting, checklists, voice notes, offline access, and 7-day Google Drive backups.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
@@ -591,6 +916,210 @@ fun SettingsScreen(
                 },
                 dismissButton = {
                     TextButton(onClick = { showSecurityQuestionDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        // Google Drive Folder Picker Dialog
+        if (showDriveFolderDialog) {
+            val suggestedFolders = listOf(
+                "My Drive / MyNotes_Backups /",
+                "My Drive / Daily Backups /",
+                "My Drive / Personal Notes /",
+                "My Drive / Backups / NotesApp /"
+            )
+
+            AlertDialog(
+                onDismissRequest = { showDriveFolderDialog = false },
+                icon = { Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                title = { Text("Select Google Drive Folder") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "Choose or enter the Google Drive folder where your 7 rotating daily backup files (Day-1.json through Day-7.json) will be stored:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Text(
+                            "Preset Drive Folders:",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+
+                        suggestedFolders.forEach { folder ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (customFolderNameInput == folder) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 2.dp),
+                                onClick = { customFolderNameInput = folder }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Folder,
+                                        contentDescription = null,
+                                        tint = if (customFolderNameInput == folder) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        folder,
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontWeight = if (customFolderNameInput == folder) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Or Custom Folder Path:",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        OutlinedTextField(
+                            value = customFolderNameInput,
+                            onValueChange = { customFolderNameInput = it },
+                            label = { Text("Google Drive Folder Path") },
+                            singleLine = true,
+                            leadingIcon = { Icon(Icons.Default.CreateNewFolder, contentDescription = null) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("custom_folder_name_input")
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (customFolderNameInput.isNotBlank()) {
+                                settingsViewModel.setDriveFolderName(customFolderNameInput.trim())
+                                showDriveFolderDialog = false
+                            }
+                        },
+                        modifier = Modifier.testTag("save_drive_folder_button")
+                    ) {
+                        Text("Select Folder")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDriveFolderDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        // Slot Restore Selection Dialog
+        if (showSlotRestoreDialog) {
+            AlertDialog(
+                onDismissRequest = { showSlotRestoreDialog = false },
+                icon = { Icon(Icons.Default.Restore, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                title = { Text("Restore From 7-Day Backup") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "Select which day's backup slot from your Google Drive folder you wish to restore:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        slotsInfo.forEach { slot ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (slot.exists) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainerLowest,
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
+                                    if (slot.exists) {
+                                        selectedRestoreSlot = slot.slotNumber
+                                    }
+                                }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = if (slot.exists) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                            contentDescription = null,
+                                            tint = if (slot.exists) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Column {
+                                            Text(
+                                                "Day-${slot.slotNumber}.json (${slot.dayName})",
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                                            )
+                                            Text(
+                                                text = if (slot.exists) {
+                                                    val sdf = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
+                                                    "${sdf.format(Date(slot.lastModified))} • ${(slot.sizeBytes / 1024).coerceAtLeast(1)} KB"
+                                                } else "No backup file",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
+                                        }
+                                    }
+
+                                    if (slot.exists) {
+                                        FilledTonalButton(
+                                            onClick = {
+                                                selectedRestoreSlot = slot.slotNumber
+                                            },
+                                            modifier = Modifier.testTag("restore_slot_${slot.slotNumber}_btn")
+                                        ) {
+                                            Text("Restore")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showSlotRestoreDialog = false }) {
+                        Text("Close")
+                    }
+                }
+            )
+        }
+
+        // Slot Restore Confirmation
+        if (selectedRestoreSlot != null) {
+            val slotNum = selectedRestoreSlot!!
+            AlertDialog(
+                onDismissRequest = { selectedRestoreSlot = null },
+                icon = { Icon(Icons.Default.Restore, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                title = { Text("Restore Day-$slotNum.json?") },
+                text = {
+                    Text("This will restore all notes, checklists, tags, and media from Day-$slotNum.json (${BackupManager.getSlotDayName(slotNum)}).")
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            notesViewModel.restoreFromRotatingSlot(slotNum)
+                            selectedRestoreSlot = null
+                            showSlotRestoreDialog = false
+                            refreshSlots()
+                        }
+                    ) {
+                        Text("Confirm Restore")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { selectedRestoreSlot = null }) {
                         Text("Cancel")
                     }
                 }

@@ -136,6 +136,31 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         // Auto purge old trashed notes on launch
         viewModelScope.launch {
             repository.purgeOldTrashedNotes()
+            checkAndRunAutoDailyBackup()
+        }
+    }
+
+    fun checkAndRunAutoDailyBackup() {
+        viewModelScope.launch {
+            val autoEnabled = settingsRepository.autoBackupEnabled.stateIn(viewModelScope).value
+            if (!autoEnabled) return@launch
+
+            val lastTime = settingsRepository.lastBackupTime.stateIn(viewModelScope).value
+            val now = System.currentTimeMillis()
+            val calLast = java.util.Calendar.getInstance().apply { timeInMillis = lastTime }
+            val calNow = java.util.Calendar.getInstance().apply { timeInMillis = now }
+
+            val isDifferentDay = (lastTime == 0L) ||
+                    (calLast.get(java.util.Calendar.YEAR) != calNow.get(java.util.Calendar.YEAR)) ||
+                    (calLast.get(java.util.Calendar.DAY_OF_YEAR) != calNow.get(java.util.Calendar.DAY_OF_YEAR))
+
+            if (isDifferentDay) {
+                val (notes, tags) = repository.getAllDataForBackup()
+                val todaySlot = BackupManager.getTodaySlot()
+                BackupManager.writeRotatingBackupSlot(getApplication(), notes, tags, todaySlot)
+                settingsRepository.setLastRotatingSlot(todaySlot)
+                settingsRepository.updateLastBackupTime(now)
+            }
         }
     }
 
@@ -267,21 +292,17 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         return json
     }
 
-    fun runDailyRotatingBackup(): Int {
-        var slotSaved = 1
-        kotlinx.coroutines.runBlocking {
-            val (notes, tags) = repository.getAllDataForBackup()
-            val currentSlot = settingsRepository.lastRotatingSlot.stateIn(viewModelScope).value
-            val nextSlot = if (currentSlot >= 7) 1 else currentSlot + 1
-            val (slot, path) = BackupManager.writeRotatingBackupSlot(getApplication(), notes, tags, nextSlot)
-            settingsRepository.setLastRotatingSlot(slot)
-            settingsRepository.updateLastBackupTime(System.currentTimeMillis())
-            slotSaved = slot
-        }
+    fun runDailyRotatingBackup(targetSlot: Int? = null) {
         viewModelScope.launch {
-            _userMessage.emit("7-day rotating backup saved to Day-$slotSaved.json")
+            val (notes, tags) = repository.getAllDataForBackup()
+            val slotToUse = targetSlot ?: BackupManager.getTodaySlot()
+            val (slot, path) = BackupManager.writeRotatingBackupSlot(getApplication(), notes, tags, slotToUse)
+            settingsRepository.setLastRotatingSlot(slot)
+            val now = System.currentTimeMillis()
+            settingsRepository.updateLastBackupTime(now)
+            val dayName = BackupManager.getSlotDayName(slot)
+            _userMessage.emit("Backup saved to Day-$slot.json ($dayName) in Google Drive folder")
         }
-        return slotSaved
     }
 
     fun restoreFromRotatingSlot(slot: Int) {

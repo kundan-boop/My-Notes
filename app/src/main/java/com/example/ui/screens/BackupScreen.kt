@@ -25,13 +25,17 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -78,9 +82,12 @@ fun BackupScreen(
     val context = LocalContext.current
     val lastBackupTime by settingsViewModel.lastBackupTime.collectAsState()
     val lastRotatingSlot by settingsViewModel.lastRotatingSlot.collectAsState()
+    val driveFolderName by settingsViewModel.driveFolderName.collectAsState()
 
     var slotsInfo by remember { mutableStateOf(BackupManager.getBackupSlotsInfo(context)) }
     var slotToRestore by remember { mutableStateOf<Int?>(null) }
+    var showDriveFolderDialog by remember { mutableStateOf(false) }
+    var customFolderNameInput by remember(driveFolderName) { mutableStateOf(driveFolderName) }
 
     fun refreshSlots() {
         slotsInfo = BackupManager.getBackupSlotsInfo(context)
@@ -165,6 +172,50 @@ fun BackupScreen(
             }
 
             item {
+                // Google Drive Folder Selection Card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(12.dp))
+                                Text("Google Drive Folder", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                            }
+                            FilledTonalButton(
+                                onClick = {
+                                    customFolderNameInput = driveFolderName
+                                    showDriveFolderDialog = true
+                                },
+                                modifier = Modifier.testTag("backup_choose_drive_folder_button")
+                            ) {
+                                Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Change")
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Target: $driveFolderName",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            "Daily rotating backup files (Day-1.json to Day-7.json) will be stored in this Drive folder.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            item {
                 // 7-Day Rotating Backup Section (Requirement 10)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -195,7 +246,7 @@ fun BackupScreen(
 
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            "The app preserves a 7-day rolling window of backups (Day-1 through Day-7). Each new day updates the next slot.",
+                            "The app preserves a 7-day rolling window of backups (Day-1 through Day-7). Each new day updates the next slot and Day 8 overwrites Day-1.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -231,7 +282,7 @@ fun BackupScreen(
                                         Spacer(Modifier.width(12.dp))
                                         Column {
                                             Text(
-                                                text = "Slot ${slot.slotNumber} (${slot.fileName})",
+                                                text = "Day-${slot.slotNumber}.json (${slot.dayName})",
                                                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
                                             )
                                             Text(
@@ -334,6 +385,91 @@ fun BackupScreen(
                 Spacer(Modifier.height(24.dp))
             }
         }
+    }
+
+    // Google Drive Folder Picker Dialog
+    if (showDriveFolderDialog) {
+        val suggestedFolders = listOf(
+            "My Drive / MyNotes_Backups /",
+            "My Drive / Daily Backups /",
+            "My Drive / Personal Notes /",
+            "My Drive / Backups / NotesApp /"
+        )
+
+        AlertDialog(
+            onDismissRequest = { showDriveFolderDialog = false },
+            icon = { Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Select Google Drive Folder") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Select or enter the Google Drive folder for rotating daily backups (Day-1.json through Day-7.json):",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    suggestedFolders.forEach { folder ->
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (customFolderNameInput == folder) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp),
+                            onClick = { customFolderNameInput = folder }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Folder,
+                                    contentDescription = null,
+                                    tint = if (customFolderNameInput == folder) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    folder,
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontWeight = if (customFolderNameInput == folder) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = customFolderNameInput,
+                        onValueChange = { customFolderNameInput = it },
+                        label = { Text("Google Drive Folder Path") },
+                        singleLine = true,
+                        leadingIcon = { Icon(Icons.Default.CreateNewFolder, contentDescription = null) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("backup_custom_folder_name_input")
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (customFolderNameInput.isNotBlank()) {
+                            settingsViewModel.setDriveFolderName(customFolderNameInput.trim())
+                            showDriveFolderDialog = false
+                        }
+                    },
+                    modifier = Modifier.testTag("backup_save_drive_folder_button")
+                ) {
+                    Text("Select Folder")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDriveFolderDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     // Restore Confirmation Dialog
