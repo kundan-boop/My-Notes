@@ -1,21 +1,79 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# ======================================================================
+# ProGuard / R8 Rules for Android App
+# ======================================================================
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Keep line numbers and file names for debug stack traces
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Keep annotations, signatures, and generic types
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# ----------------------------------------------------------------------
+# Kotlin & Kotlin Coroutines
+# ----------------------------------------------------------------------
+-dontwarn kotlinx.coroutines.**
+-keepclassmembers class kotlinx.coroutines.** {
+    volatile <fields>;
+}
+
+# ----------------------------------------------------------------------
+# Android Jetpack Compose & ViewModel
+# ----------------------------------------------------------------------
+-keepclassmembers class * extends androidx.lifecycle.ViewModel {
+    <init>(...);
+}
+-keep class androidx.compose.runtime.** { *; }
+
+# ----------------------------------------------------------------------
+# Room Database
+# ----------------------------------------------------------------------
+-keep class * extends androidx.room.RoomDatabase
+-dontwarn androidx.room.paging.**
+-keep @androidx.room.Entity class * { *; }
+-keep @androidx.room.Dao class * { *; }
+-keep class * extends androidx.room.RoomDatabase$Callback { *; }
+-keepclassmembers class * {
+    @androidx.room.PrimaryKey *;
+    @androidx.room.ColumnInfo *;
+    @androidx.room.Embedded *;
+    @androidx.room.Relation *;
+    @androidx.room.TypeConverter *;
+}
+
+# ----------------------------------------------------------------------
+# Moshi & JSON Serialization
+# ----------------------------------------------------------------------
+-keepclasseswithmembers class * {
+    @com.squareup.moshi.Json <fields>;
+}
+-keep @com.squareup.moshi.JsonClass class * { *; }
+-keepclassmembers class * {
+    @com.squareup.moshi.FromJson *;
+    @com.squareup.moshi.ToJson *;
+}
+-dontwarn com.squareup.moshi.**
+
+# ----------------------------------------------------------------------
+# Retrofit & OkHttp
+# ----------------------------------------------------------------------
+-dontwarn retrofit2.**
+-keep class retrofit2.** { *; }
+-keepclasseswithmembers interface * {
+    @retrofit2.http.* <methods>;
+}
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-keep class okhttp3.** { *; }
+
+# ----------------------------------------------------------------------
+# Coil Image Loading
+# ----------------------------------------------------------------------
+-keep class coil.** { *; }
+-dontwarn coil.**
+
+# ----------------------------------------------------------------------
+# Application Data Models & Entities
+# ----------------------------------------------------------------------
+-keep class com.example.data.** { *; }
+
