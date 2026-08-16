@@ -6,15 +6,19 @@ import androidx.compose.ui.text.input.TextFieldValue
 enum class FontSizePreset(val label: String, val tag: String, val spSize: Float) {
     SMALL("Small", "small", 12f),
     NORMAL("Normal", "normal", 16f),
+    MEDIUM("Medium", "medium", 18f),
     LARGE("Large", "large", 20f),
-    EXTRA_LARGE("X-Large", "x-large", 24f);
+    EXTRA_LARGE("X-Large", "x-large", 24f),
+    ELEPHANT("Elephant", "elephant", 32f);
 
     companion object {
         fun fromTag(tag: String?): FontSizePreset {
             return when (tag?.lowercase()) {
                 "small", "12px", "12sp" -> SMALL
+                "medium", "18px", "18sp" -> MEDIUM
                 "large", "20px", "20sp" -> LARGE
                 "x-large", "extra-large", "24px", "24sp" -> EXTRA_LARGE
+                "elephant", "32px", "32sp" -> ELEPHANT
                 else -> NORMAL
             }
         }

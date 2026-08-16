@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -35,21 +36,26 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Lock
+import com.example.data.repository.SettingsRepository
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
@@ -83,6 +89,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+
 import com.example.data.local.NoteEntity
 import com.example.ui.components.ColorPicker
 import com.example.ui.components.NoteCard
@@ -112,12 +119,23 @@ fun NotesListScreen(
     val selectedTagFilter by viewModel.selectedTagFilter.collectAsState()
     val selectedColorFilter by viewModel.selectedColorFilter.collectAsState()
     val selectedTypeFilter by viewModel.selectedTypeFilter.collectAsState()
+    val sortOrder by viewModel.sortOrder.collectAsState()
     val unlockedNoteIds by viewModel.unlockedNoteIds.collectAsState()
+
+    val settingsRepo = remember { SettingsRepository(context) }
+    val masterNotesPassword by settingsRepo.protectedNotesPassword.collectAsState(initial = "1234")
+    val appLockPin by settingsRepo.appLockPin.collectAsState(initial = "")
+    val securityQuestion by settingsRepo.securityQuestion.collectAsState(initial = "What is your favorite book?")
+    val securityAnswer by settingsRepo.securityAnswer.collectAsState(initial = "")
 
     var colorPickNoteId by remember { mutableStateOf<String?>(null) }
     var noteToUnlock by remember { mutableStateOf<NoteEntity?>(null) }
     var unlockPasswordInput by remember { mutableStateOf("") }
     var unlockErrorMessage by remember { mutableStateOf<String?>(null) }
+    var showSecurityRecovery by remember { mutableStateOf(false) }
+    var recoveryAnswerInput by remember { mutableStateOf("") }
+    var recoveryErrorMessage by remember { mutableStateOf<String?>(null) }
+    var showSortMenu by remember { mutableStateOf(false) }
 
     val pinnedNotes = remember(activeNotes) { activeNotes.filter { it.isPinned } }
     val otherNotes = remember(activeNotes) { activeNotes.filter { !it.isPinned } }
@@ -147,8 +165,13 @@ fun NotesListScreen(
                 NavigationDrawerItem(
                     icon = { Icon(Icons.Default.Description, contentDescription = null) },
                     label = { Text("All Notes") },
-                    selected = true,
-                    onClick = { scope.launch { drawerState.close() } },
+                    selected = selectedTypeFilter == null && selectedTagFilter == null,
+                    onClick = {
+                        viewModel.setSelectedTypeFilter(null)
+                        viewModel.setSelectedTagFilter(null)
+                        viewModel.setSearchQuery("")
+                        scope.launch { drawerState.close() }
+                    },
                     modifier = Modifier
                         .padding(NavigationDrawerItemDefaults.ItemPadding)
                         .testTag("drawer_all_notes")
@@ -238,6 +261,8 @@ fun NotesListScreen(
                         .testTag("drawer_backup")
                 )
 
+
+
                 NavigationDrawerItem(
                     icon = { Icon(Icons.Default.Settings, contentDescription = null) },
                     label = { Text("Settings") },
@@ -258,7 +283,8 @@ fun NotesListScreen(
             topBar = {
                 Surface(
                     tonalElevation = 3.dp,
-                    color = MaterialTheme.colorScheme.surface
+                    color = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.statusBarsPadding()
                 ) {
                     Column(
                         modifier = Modifier
@@ -317,10 +343,48 @@ fun NotesListScreen(
                                         contentDescription = "Toggle View Mode"
                                     )
                                 }
+
+                                Box {
+                                    IconButton(
+                                        onClick = { showSortMenu = true },
+                                        modifier = Modifier.testTag("sort_menu_button")
+                                    ) {
+                                        Icon(Icons.Default.Sort, contentDescription = "Sort Notes")
+                                    }
+                                    DropdownMenu(
+                                        expanded = showSortMenu,
+                                        onDismissRequest = { showSortMenu = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Date Modified") },
+                                            onClick = {
+                                                viewModel.setSortOrder("modified")
+                                                showSortMenu = false
+                                            },
+                                            trailingIcon = if (sortOrder == "modified") { { Icon(Icons.Default.Check, contentDescription = null) } } else null
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Date Created") },
+                                            onClick = {
+                                                viewModel.setSortOrder("created")
+                                                showSortMenu = false
+                                            },
+                                            trailingIcon = if (sortOrder == "created") { { Icon(Icons.Default.Check, contentDescription = null) } } else null
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Alphabetical") },
+                                            onClick = {
+                                                viewModel.setSortOrder("alphabetical")
+                                                showSortMenu = false
+                                            },
+                                            trailingIcon = if (sortOrder == "alphabetical") { { Icon(Icons.Default.Check, contentDescription = null) } } else null
+                                        )
+                                    }
+                                }
                             }
                         }
 
-                        // Filter chips row
+                        // Filter chips row: All, Notes, Checklist, and Tags
                         Spacer(Modifier.height(8.dp))
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -328,18 +392,27 @@ fun NotesListScreen(
                         ) {
                             item {
                                 FilterChip(
-                                    selected = selectedTypeFilter == "checklist",
-                                    onClick = { viewModel.setSelectedTypeFilter("checklist") },
-                                    label = { Text("Checklists") },
-                                    leadingIcon = { Icon(Icons.Default.CheckBox, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                                    selected = selectedTypeFilter == null && selectedTagFilter == null,
+                                    onClick = {
+                                        viewModel.setSelectedTypeFilter(null)
+                                        viewModel.setSelectedTagFilter(null)
+                                    },
+                                    label = { Text("All") }
                                 )
                             }
                             item {
                                 FilterChip(
-                                    selected = selectedTypeFilter == "voice",
-                                    onClick = { viewModel.setSelectedTypeFilter("voice") },
-                                    label = { Text("Voice Notes") },
-                                    leadingIcon = { Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                                    selected = selectedTypeFilter == "text",
+                                    onClick = { viewModel.setSelectedTypeFilter("text") },
+                                    label = { Text("Notes") }
+                                )
+                            }
+                            item {
+                                FilterChip(
+                                    selected = selectedTypeFilter == "checklist",
+                                    onClick = { viewModel.setSelectedTypeFilter("checklist") },
+                                    label = { Text("Checklist") },
+                                    leadingIcon = { Icon(Icons.Default.CheckBox, contentDescription = null, modifier = Modifier.size(16.dp)) }
                                 )
                             }
 
@@ -373,40 +446,6 @@ fun NotesListScreen(
                     .padding(innerPadding)
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    // Quick Note Expand Bar
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .clickable { onNewNoteClick("text") }
-                            .testTag("quick_note_bar"),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Take a note...",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                IconButton(onClick = { onNewNoteClick("checklist") }) {
-                                    Icon(Icons.Default.CheckBox, contentDescription = "New Checklist", tint = MaterialTheme.colorScheme.primary)
-                                }
-                                IconButton(onClick = { onNewNoteClick("voice") }) {
-                                    Icon(Icons.Default.Mic, contentDescription = "New Voice Note", tint = MaterialTheme.colorScheme.primary)
-                                }
-                            }
-                        }
-                    }
 
                     // Empty state
                     if (activeNotes.isEmpty()) {
@@ -585,61 +624,137 @@ fun NotesListScreen(
         }
     }
 
-    // Protected Note Unlock Password Dialog (Requirement 9)
+    // Protected Note Unlock Password Dialog
     if (noteToUnlock != null) {
         val target = noteToUnlock!!
-        AlertDialog(
-            onDismissRequest = { noteToUnlock = null },
-            icon = { Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-            title = { Text("Unlock Protected Note") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Enter password to view this protected note.")
-                    OutlinedTextField(
-                        value = unlockPasswordInput,
-                        onValueChange = {
-                            unlockPasswordInput = it
-                            unlockErrorMessage = null
-                        },
-                        label = { Text("Password") },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        isError = unlockErrorMessage != null,
-                        supportingText = unlockErrorMessage?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val correctPass = target.protectedPassword
-                        val isValid = if (!correctPass.isNullOrBlank()) {
-                            unlockPasswordInput == correctPass
-                        } else {
-                            // If no specific password set, any non-empty input or unlock succeeds
-                            unlockPasswordInput.isNotBlank()
-                        }
 
-                        if (isValid) {
-                            viewModel.unlockNote(target.id)
-                            val destId = target.id
-                            noteToUnlock = null
-                            onNoteClick(destId)
-                        } else {
-                            unlockErrorMessage = "Incorrect password"
+        if (showSecurityRecovery) {
+            AlertDialog(
+                onDismissRequest = {
+                    showSecurityRecovery = false
+                    recoveryAnswerInput = ""
+                    recoveryErrorMessage = null
+                },
+                icon = { Icon(Icons.Default.HelpOutline, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                title = { Text("Note Lock Recovery") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Answer your security question to unlock this note:")
+                        Text(
+                            text = securityQuestion.ifBlank { "What is your favorite book?" },
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                        )
+                        OutlinedTextField(
+                            value = recoveryAnswerInput,
+                            onValueChange = {
+                                recoveryAnswerInput = it
+                                recoveryErrorMessage = null
+                            },
+                            label = { Text("Your Answer") },
+                            singleLine = true,
+                            isError = recoveryErrorMessage != null,
+                            supportingText = recoveryErrorMessage?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
+                            modifier = Modifier.fillMaxWidth().testTag("unlock_recovery_answer_input")
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val expected = securityAnswer.trim()
+                            val given = recoveryAnswerInput.trim()
+                            val isMatch = expected.isBlank() || given.equals(expected, ignoreCase = true)
+                            if (isMatch) {
+                                viewModel.unlockNote(target.id)
+                                val destId = target.id
+                                showSecurityRecovery = false
+                                recoveryAnswerInput = ""
+                                noteToUnlock = null
+                                onNoteClick(destId)
+                            } else {
+                                recoveryErrorMessage = "Incorrect answer"
+                            }
+                        },
+                        modifier = Modifier.testTag("unlock_recovery_confirm_button")
+                    ) {
+                        Text("Unlock Note")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showSecurityRecovery = false
+                            recoveryAnswerInput = ""
+                            recoveryErrorMessage = null
+                        }
+                    ) {
+                        Text("Back")
+                    }
+                }
+            )
+        } else {
+            AlertDialog(
+                onDismissRequest = { noteToUnlock = null },
+                icon = { Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                title = { Text("Unlock Protected Note") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Enter password or PIN to view this protected note.")
+                        OutlinedTextField(
+                            value = unlockPasswordInput,
+                            onValueChange = {
+                                unlockPasswordInput = it
+                                unlockErrorMessage = null
+                            },
+                            label = { Text("Password / PIN") },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            isError = unlockErrorMessage != null,
+                            supportingText = unlockErrorMessage?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
+                            modifier = Modifier.fillMaxWidth().testTag("unlock_password_input")
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val notePass = target.protectedPassword
+                            val isValid = when {
+                                !notePass.isNullOrBlank() -> unlockPasswordInput == notePass
+                                masterNotesPassword.isNotBlank() -> unlockPasswordInput == masterNotesPassword
+                                appLockPin.isNotBlank() -> unlockPasswordInput == appLockPin
+                                else -> unlockPasswordInput.isNotBlank()
+                            }
+
+                            if (isValid) {
+                                viewModel.unlockNote(target.id)
+                                val destId = target.id
+                                noteToUnlock = null
+                                onNoteClick(destId)
+                            } else {
+                                unlockErrorMessage = "Incorrect password or PIN"
+                            }
+                        },
+                        modifier = Modifier.testTag("unlock_confirm_button")
+                    ) {
+                        Text("Unlock")
+                    }
+                },
+                dismissButton = {
+                    Row {
+                        TextButton(
+                            onClick = { showSecurityRecovery = true },
+                            modifier = Modifier.testTag("unlock_forgot_password_button")
+                        ) {
+                            Text("Forgot?")
+                        }
+                        TextButton(onClick = { noteToUnlock = null }) {
+                            Text("Cancel")
                         }
                     }
-                ) {
-                    Text("Unlock")
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { noteToUnlock = null }) {
-                    Text("Cancel")
-                }
-            }
-        )
+            )
+        }
     }
 }
 

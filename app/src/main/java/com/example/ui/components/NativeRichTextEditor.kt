@@ -82,6 +82,50 @@ class RichEditText @JvmOverloads constructor(
                 if (countAdded > 0) {
                     val endPos = startPos + countAdded
                     applyPendingStyles(s, startPos, endPos)
+
+                    val insertedText = s.subSequence(startPos, endPos).toString()
+                    if (insertedText.contains('\n')) {
+                        val newlineIndex = startPos + insertedText.indexOf('\n')
+                        val prevLineStart = s.lastIndexOf('\n', (newlineIndex - 2).coerceAtLeast(0)).let { if (it == -1) 0 else it + 1 }
+                        val prevLineText = s.subSequence(prevLineStart, newlineIndex).toString().trimEnd()
+
+                        val bulletMatch = Regex("^([•\\-*])\\s*").find(prevLineText)
+                        if (bulletMatch != null) {
+                            val bulletSymbol = bulletMatch.groupValues[1]
+                            val contentWithoutBullet = prevLineText.removePrefix(bulletSymbol).trim()
+                            if (contentWithoutBullet.isEmpty()) {
+                                isFormatting = true
+                                s.delete(prevLineStart, newlineIndex + 1)
+                                isFormatting = false
+                                setSelection(prevLineStart)
+                            } else {
+                                val nextBullet = "$bulletSymbol "
+                                isFormatting = true
+                                s.insert(newlineIndex + 1, nextBullet)
+                                isFormatting = false
+                                setSelection(newlineIndex + 1 + nextBullet.length)
+                            }
+                        } else {
+                            val numberedMatch = Regex("^(\\d+)\\.\\s*").find(prevLineText)
+                            if (numberedMatch != null) {
+                                val numStr = numberedMatch.groupValues[1]
+                                val contentWithoutNum = prevLineText.removePrefix("$numStr.").trim()
+                                if (contentWithoutNum.isEmpty()) {
+                                    isFormatting = true
+                                    s.delete(prevLineStart, newlineIndex + 1)
+                                    isFormatting = false
+                                    setSelection(prevLineStart)
+                                } else {
+                                    val nextNum = numStr.toInt() + 1
+                                    val nextNumStr = "$nextNum. "
+                                    isFormatting = true
+                                    s.insert(newlineIndex + 1, nextNumStr)
+                                    isFormatting = false
+                                    setSelection(newlineIndex + 1 + nextNumStr.length)
+                                }
+                            }
+                        }
+                    }
                 }
 
                 notifyHtmlChanged()
@@ -279,8 +323,10 @@ class RichEditText @JvmOverloads constructor(
         val relativeSize = when (preset) {
             FontSizePreset.SMALL -> 0.8f
             FontSizePreset.NORMAL -> 1.0f
+            FontSizePreset.MEDIUM -> 1.15f
             FontSizePreset.LARGE -> 1.25f
             FontSizePreset.EXTRA_LARGE -> 1.5f
+            FontSizePreset.ELEPHANT -> 2.0f
         }
 
         if (selStart != selEnd && selStart >= 0 && selEnd <= s.length) {

@@ -40,11 +40,12 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     val audioRecorder = AudioRecorder(application)
     val audioPlayer = AudioPlayer(application)
 
-    // Filters
+    // Filters & Sorting
     val searchQuery = MutableStateFlow("")
     val selectedTagFilter = MutableStateFlow<String?>(null)
     val selectedColorFilter = MutableStateFlow<String?>(null)
     val selectedTypeFilter = MutableStateFlow<String?>(null) // "text", "checklist", "voice"
+    val sortOrder = MutableStateFlow("modified") // "modified", "created", "alphabetical"
 
     val viewMode: StateFlow<String> = settingsRepository.viewMode.stateIn(
         scope = viewModelScope,
@@ -64,9 +65,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         searchQuery.debounce(200),
         selectedTagFilter,
         selectedColorFilter,
-        selectedTypeFilter
-    ) { query, tagFilter, colorFilter, typeFilter ->
-        QuadFilter(query, tagFilter, colorFilter, typeFilter)
+        selectedTypeFilter,
+        sortOrder
+    ) { query, tagFilter, colorFilter, typeFilter, sort ->
+        PentaFilter(query, tagFilter, colorFilter, typeFilter, sort)
     }.flatMapLatest { filter ->
         if (filter.query.isNotBlank()) {
             repository.searchNotes(filter.query)
@@ -74,13 +76,18 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             repository.activeNotes
         }
     }.combine(
-        combine(selectedTagFilter, selectedColorFilter, selectedTypeFilter) { t, c, ty -> Triple(t, c, ty) }
+        combine(selectedTagFilter, selectedColorFilter, selectedTypeFilter, sortOrder) { t, c, ty, s -> Quad(t, c, ty, s) }
     ) { notes, filters ->
-        notes.filter { note ->
+        val filtered = notes.filter { note ->
             val matchesTag = filters.first == null || Converters.jsonToStringList(note.tagsJson).contains(filters.first)
             val matchesColor = filters.second == null || note.colorHex == filters.second
             val matchesType = filters.third == null || note.type == filters.third
             matchesTag && matchesColor && matchesType
+        }
+        when (filters.fourth) {
+            "created" -> filtered.sortedWith(compareByDescending<NoteEntity> { it.isPinned }.thenByDescending { it.createdAt })
+            "alphabetical" -> filtered.sortedWith(compareByDescending<NoteEntity> { it.isPinned }.thenBy { it.title.lowercase() })
+            else -> filtered.sortedWith(compareByDescending<NoteEntity> { it.isPinned }.thenByDescending { it.updatedAt })
         }
     }.stateIn(
         scope = viewModelScope,
@@ -335,6 +342,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setSortOrder(order: String) {
+        sortOrder.value = order
+    }
+
     fun setReminder(context: android.content.Context, note: NoteEntity, timeMs: Long?) {
         viewModelScope.launch {
             val updated = note.copy(reminderAt = timeMs)
@@ -350,4 +361,6 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
+private data class PentaFilter<A, B, C, D, E>(val query: A, val tag: B, val color: C, val type: D, val sort: E)
+private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 private data class QuadFilter<A, B, C, D>(val query: A, val tag: B, val color: C, val type: D)

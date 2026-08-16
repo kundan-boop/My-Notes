@@ -15,14 +15,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,17 +35,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.data.repository.SettingsRepository
 
 @Composable
 fun AppLockOverlay(
     correctPin: String,
     onUnlocked: () -> Unit
 ) {
+    val context = LocalContext.current
+    val settingsRepo = remember { SettingsRepository(context) }
+    val securityQuestion by settingsRepo.securityQuestion.collectAsState(initial = "What is your favorite book?")
+    val securityAnswer by settingsRepo.securityAnswer.collectAsState(initial = "")
+
     var enteredPin by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showForgotPinDialog by remember { mutableStateOf(false) }
+    var recoveryAnswerInput by remember { mutableStateOf("") }
+    var recoveryErrorMessage by remember { mutableStateOf<String?>(null) }
 
     fun handleDigit(digit: String) {
         if (enteredPin.length < 4) {
@@ -170,6 +185,67 @@ fun AppLockOverlay(
                     }
                 }
             }
+
+            Spacer(Modifier.height(16.dp))
+
+            TextButton(
+                onClick = { showForgotPinDialog = true },
+                modifier = Modifier.testTag("app_lock_forgot_pin_button")
+            ) {
+                Text("Forgot PIN?", color = MaterialTheme.colorScheme.primary)
+            }
         }
+    }
+
+    if (showForgotPinDialog) {
+        AlertDialog(
+            onDismissRequest = { showForgotPinDialog = false },
+            icon = { Icon(Icons.Default.HelpOutline, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("App Lock Recovery") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Answer your security question to unlock:")
+                    Text(
+                        text = securityQuestion.ifBlank { "What is your favorite book?" },
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                    )
+                    OutlinedTextField(
+                        value = recoveryAnswerInput,
+                        onValueChange = {
+                            recoveryAnswerInput = it
+                            recoveryErrorMessage = null
+                        },
+                        label = { Text("Your Answer") },
+                        singleLine = true,
+                        isError = recoveryErrorMessage != null,
+                        supportingText = recoveryErrorMessage?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
+                        modifier = Modifier.fillMaxWidth().testTag("app_lock_recovery_answer_input")
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val expected = securityAnswer.trim()
+                        val given = recoveryAnswerInput.trim()
+                        val isMatch = expected.isBlank() || given.equals(expected, ignoreCase = true)
+                        if (isMatch) {
+                            showForgotPinDialog = false
+                            onUnlocked()
+                        } else {
+                            recoveryErrorMessage = "Incorrect answer"
+                        }
+                    },
+                    modifier = Modifier.testTag("app_lock_recovery_confirm_button")
+                ) {
+                    Text("Unlock")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showForgotPinDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }

@@ -29,7 +29,9 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Unarchive
+import com.example.util.ShareNoteHelper
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -224,6 +226,14 @@ fun NoteCard(
                                         contentDescription = null
                                     )
                                 }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Share Note") },
+                                onClick = {
+                                    showMenu = false
+                                    ShareNoteHelper.shareNote(context, note)
+                                },
+                                leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) }
                             )
                             DropdownMenuItem(
                                 text = { Text("Color Label") },

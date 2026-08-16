@@ -330,24 +330,79 @@ fun BackupScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(Modifier.height(12.dp))
-                        Button(
-                            onClick = {
-                                val jsonString = notesViewModel.exportBackupJson()
-                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "application/json"
-                                    putExtra(Intent.EXTRA_TEXT, jsonString)
-                                    putExtra(Intent.EXTRA_SUBJECT, "MyNotes_Backup_${System.currentTimeMillis()}.json")
-                                }
-                                context.startActivity(Intent.createChooser(shareIntent, "Save or Share Notes Backup"))
-                                refreshSlots()
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("export_backup_button")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Default.FileUpload, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Export Backup JSON")
+                            Button(
+                                onClick = {
+                                    val jsonString = notesViewModel.exportBackupJson()
+                                    try {
+                                        val backupFile = java.io.File(context.cacheDir, "MyNotes_Backup_${System.currentTimeMillis()}.json")
+                                        backupFile.writeText(jsonString)
+                                        val fileUri = androidx.core.content.FileProvider.getUriForFile(
+                                            context,
+                                            "${context.packageName}.provider",
+                                            backupFile
+                                        )
+                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                            type = "application/json"
+                                            putExtra(Intent.EXTRA_STREAM, fileUri)
+                                            putExtra(Intent.EXTRA_SUBJECT, backupFile.name)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        context.startActivity(Intent.createChooser(shareIntent, "Share or Save Notes Backup"))
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Error sharing backup: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                    }
+                                    refreshSlots()
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("export_backup_button")
+                            ) {
+                                Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Share JSON")
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    val jsonString = notesViewModel.exportBackupJson()
+                                    try {
+                                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                            val values = android.content.ContentValues().apply {
+                                                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "MyNotes_Backup_${System.currentTimeMillis()}.json")
+                                                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/json")
+                                                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+                                            }
+                                            val resolver = context.contentResolver
+                                            val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                                            if (uri != null) {
+                                                resolver.openOutputStream(uri)?.use { it.write(jsonString.toByteArray()) }
+                                                Toast.makeText(context, "Backup saved to Downloads!", Toast.LENGTH_LONG).show()
+                                            } else {
+                                                Toast.makeText(context, "Failed to save backup", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } else {
+                                            val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                                            val file = java.io.File(downloadsDir, "MyNotes_Backup_${System.currentTimeMillis()}.json")
+                                            file.writeText(jsonString)
+                                            Toast.makeText(context, "Backup saved to Downloads: ${file.name}", Toast.LENGTH_LONG).show()
+                                        }
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Error saving: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                    }
+                                    refreshSlots()
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("save_downloads_button")
+                            ) {
+                                Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Save Local")
+                            }
                         }
                     }
                 }

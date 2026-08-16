@@ -33,6 +33,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Check
@@ -42,6 +44,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PushPin
@@ -53,6 +56,8 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -108,6 +113,7 @@ import com.example.util.FontSizePreset
 import com.example.util.ImageUtils
 import com.example.util.RichTextHelper
 import com.example.util.RichTextRenderer
+import com.example.util.ShareNoteHelper
 import com.example.util.SpeechToTextManager
 import com.example.util.TextAlignmentPreset
 import kotlinx.coroutines.delay
@@ -333,49 +339,247 @@ fun NoteEditScreen(
                     }
                 },
                 actions = {
+                    // Undo Button
+                    IconButton(
+                        onClick = { richEditorState.undo() },
+                        enabled = richEditorState.canUndo,
+                        modifier = Modifier
+                            .testTag("note_undo_button")
+                            .size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Undo,
+                            contentDescription = "Undo",
+                            tint = if (richEditorState.canUndo) textColor else textColor.copy(alpha = 0.38f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    // Redo Button
+                    IconButton(
+                        onClick = { richEditorState.redo() },
+                        enabled = richEditorState.canRedo,
+                        modifier = Modifier
+                            .testTag("note_redo_button")
+                            .size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Redo,
+                            contentDescription = "Redo",
+                            tint = if (richEditorState.canRedo) textColor else textColor.copy(alpha = 0.38f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
                     // Lock / Protect Note toggle
                     IconButton(
                         onClick = { showProtectDialog = true },
-                        modifier = Modifier.testTag("note_protect_button")
+                        modifier = Modifier
+                            .testTag("note_protect_button")
+                            .size(36.dp)
                     ) {
                         Icon(
                             imageVector = if (isProtected) Icons.Filled.Lock else Icons.Outlined.Lock,
                             contentDescription = if (isProtected) "Protected Note" else "Protect Note",
-                            tint = if (isProtected) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.7f)
+                            tint = if (isProtected) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.7f),
+                            modifier = Modifier.size(18.dp)
                         )
                     }
 
-                    IconButton(onClick = { isPinned = !isPinned }) {
+                    // Pin toggle
+                    IconButton(
+                        onClick = { isPinned = !isPinned },
+                        modifier = Modifier.size(36.dp)
+                    ) {
                         Icon(
                             imageVector = if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
                             contentDescription = if (isPinned) "Unpin Note" else "Pin Note",
-                            tint = if (isPinned) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.7f)
+                            tint = if (isPinned) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.7f),
+                            modifier = Modifier.size(18.dp)
                         )
                     }
 
-                    IconButton(onClick = { showColorPicker = !showColorPicker }) {
-                        Icon(Icons.Default.Palette, contentDescription = "Pick Color", tint = textColor.copy(alpha = 0.7f))
-                    }
+                    // Overflow Menu for Color, Tags, Archive, Delete
+                    var showTopMenu by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(
+                            onClick = { showTopMenu = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "More options",
+                                tint = textColor.copy(alpha = 0.7f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showTopMenu,
+                            onDismissRequest = { showTopMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                leadingIcon = { Icon(Icons.Default.Palette, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                                text = { Text("Pick Color") },
+                                onClick = {
+                                    showTopMenu = false
+                                    showColorPicker = !showColorPicker
+                                }
+                            )
+                            DropdownMenuItem(
+                                leadingIcon = { Icon(Icons.Default.Tag, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                                text = { Text("Manage Tags") },
+                                onClick = {
+                                    showTopMenu = false
+                                    showTagPicker = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                leadingIcon = { Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                                text = { Text("Insert Image") },
+                                onClick = {
+                                    showTopMenu = false
+                                    imagePickerLauncher.launch("image/*")
+                                }
+                            )
+                            DropdownMenuItem(
+                                leadingIcon = { Icon(Icons.Default.Notifications, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                                text = { Text("Set Reminder") },
+                                onClick = {
+                                    showTopMenu = false
+                                    val calendar = Calendar.getInstance()
+                                    DatePickerDialog(
+                                        context,
+                                        { _, year, month, dayOfMonth ->
+                                            calendar.set(Calendar.YEAR, year)
+                                            calendar.set(Calendar.MONTH, month)
+                                            calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
 
-                    IconButton(onClick = { showTagPicker = true }) {
-                        Icon(Icons.Default.Tag, contentDescription = "Manage Tags", tint = textColor.copy(alpha = 0.7f))
-                    }
-
-                    IconButton(onClick = { isArchived = !isArchived }) {
-                        Icon(
-                            Icons.Default.Archive,
-                            contentDescription = "Archive",
-                            tint = if (isArchived) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.7f)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = { showDeleteConfirmDialog = true },
-                        modifier = Modifier.testTag("note_delete_button")
-                    ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Move to Trash", tint = MaterialTheme.colorScheme.error)
+                                            TimePickerDialog(
+                                                context,
+                                                { _, hourOfDay, minute ->
+                                                    calendar.set(Calendar.HOUR_OF_DAY, hourOfDay)
+                                                    calendar.set(Calendar.MINUTE, minute)
+                                                    calendar.set(Calendar.SECOND, 0)
+                                                    val scheduledTime = calendar.timeInMillis
+                                                    reminderAt = scheduledTime
+                                                    val curNote = note
+                                                    if (curNote != null) {
+                                                        val updatedForReminder = curNote.copy(
+                                                            title = title,
+                                                            content = richEditorState.html,
+                                                            type = type,
+                                                            checklistJson = Converters.checklistToJson(checklistItems),
+                                                            colorHex = colorHex,
+                                                            tagsJson = Converters.stringListToJson(tagNames),
+                                                            reminderAt = scheduledTime
+                                                        )
+                                                        viewModel.setReminder(context, updatedForReminder, scheduledTime)
+                                                    }
+                                                },
+                                                calendar.get(Calendar.HOUR_OF_DAY),
+                                                calendar.get(Calendar.MINUTE),
+                                                true
+                                            ).show()
+                                        },
+                                        calendar.get(Calendar.YEAR),
+                                        calendar.get(Calendar.MONTH),
+                                        calendar.get(Calendar.DAY_OF_MONTH)
+                                    ).show()
+                                }
+                            )
+                            DropdownMenuItem(
+                                leadingIcon = { Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                                text = { Text("Share Note") },
+                                onClick = {
+                                    showTopMenu = false
+                                    val currentNote = note ?: return@DropdownMenuItem
+                                    val updatedForShare = currentNote.copy(
+                                        title = title,
+                                        content = richEditorState.html,
+                                        type = type,
+                                        checklistJson = Converters.checklistToJson(checklistItems),
+                                        colorHex = colorHex,
+                                        tagsJson = Converters.stringListToJson(tagNames),
+                                        attachmentsJson = Converters.stringListToJson(attachmentPaths),
+                                        audioPath = audioPath
+                                    )
+                                    ShareNoteHelper.shareNote(context, updatedForShare)
+                                }
+                            )
+                            DropdownMenuItem(
+                                leadingIcon = { Icon(Icons.Default.Archive, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                                text = { Text(if (isArchived) "Unarchive" else "Archive") },
+                                onClick = {
+                                    showTopMenu = false
+                                    isArchived = !isArchived
+                                }
+                            )
+                            DropdownMenuItem(
+                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp)) },
+                                text = { Text("Move to Trash", color = MaterialTheme.colorScheme.error) },
+                                onClick = {
+                                    showTopMenu = false
+                                    showDeleteConfirmDialog = true
+                                }
+                            )
+                        }
                     }
                 }
+            )
+        },
+        bottomBar = {
+            RichTextToolbar(
+                isChecklistMode = (type == "checklist"),
+                activeFormats = richEditorState.activeFormats,
+                onInsertImage = { imagePickerLauncher.launch("image/*") },
+                onToggleChecklistMode = { type = if (type == "checklist") "text" else "checklist" },
+                onOpenReminder = {
+                    val calendar = Calendar.getInstance()
+                    DatePickerDialog(
+                        context,
+                        { _, year, month, dayOfMonth ->
+                            calendar.set(Calendar.YEAR, year)
+                            calendar.set(Calendar.MONTH, month)
+                            calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
+
+                            TimePickerDialog(
+                                context,
+                                { _, hourOfDay, minute ->
+                                    calendar.set(Calendar.HOUR_OF_DAY, hourOfDay)
+                                    calendar.set(Calendar.MINUTE, minute)
+                                    calendar.set(Calendar.SECOND, 0)
+                                    val scheduledTime = calendar.timeInMillis
+                                    reminderAt = scheduledTime
+                                    val curNote = note
+                                    if (curNote != null) {
+                                        viewModel.setReminder(context, curNote, scheduledTime)
+                                    }
+                                },
+                                calendar.get(Calendar.HOUR_OF_DAY),
+                                calendar.get(Calendar.MINUTE),
+                                true
+                            ).show()
+                        },
+                        calendar.get(Calendar.YEAR),
+                        calendar.get(Calendar.MONTH),
+                        calendar.get(Calendar.DAY_OF_MONTH)
+                    ).show()
+                },
+                onToggleBold = { richEditorState.toggleBold() },
+                onToggleItalic = { richEditorState.toggleItalic() },
+                onToggleUnderline = { richEditorState.toggleUnderline() },
+                onToggleStrikethrough = { richEditorState.toggleStrikethrough() },
+                onApplyFontSize = { preset -> richEditorState.setFontSize(preset) },
+                onApplyAlignment = { alignment -> richEditorState.setAlignment(alignment) },
+                onApplyHighlight = { hex -> richEditorState.setHighlight(hex) },
+                onApplyTextColor = { hex -> richEditorState.setTextColor(hex) },
+                onInsertBulletList = { richEditorState.toggleBulletList() },
+                onInsertNumberedList = { richEditorState.toggleNumberedList() },
+                onStartSpeechToText = { startDictation() },
+                modifier = Modifier
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .padding(bottom = 25.dp)
+                    .testTag("rich_text_toolbar")
             )
         }
     ) { innerPadding ->
@@ -490,35 +694,7 @@ fun NoteEditScreen(
                     )
                 }
 
-                // Rich Text Toolbar placed directly above note body (Requirement 1)
-                if (type != "checklist") {
-                    item {
-                        RichTextToolbar(
-                            isChecklistMode = (type == "checklist"),
-                            activeFormats = richEditorState.activeFormats,
-                            canUndo = richEditorState.canUndo,
-                            canRedo = richEditorState.canRedo,
-                            onUndo = { richEditorState.undo() },
-                            onRedo = { richEditorState.redo() },
-                            onToggleChecklistMode = { type = "checklist" },
-                            onToggleBold = { richEditorState.toggleBold() },
-                            onToggleItalic = { richEditorState.toggleItalic() },
-                            onToggleUnderline = { richEditorState.toggleUnderline() },
-                            onToggleStrikethrough = { richEditorState.toggleStrikethrough() },
-                            onApplyFontSize = { preset -> richEditorState.setFontSize(preset) },
-                            onApplyAlignment = { alignment -> richEditorState.setAlignment(alignment) },
-                            onApplyHighlight = { hex -> richEditorState.setHighlight(hex) },
-                            onApplyTextColor = { hex -> richEditorState.setTextColor(hex) },
-                            onInsertBulletList = { richEditorState.toggleBulletList() },
-                            onInsertNumberedList = { richEditorState.toggleNumberedList() },
-                            onClearFormatting = { richEditorState.clearFormatting() },
-                            onStartSpeechToText = { startDictation() },
-                            modifier = Modifier
-                                .padding(vertical = 4.dp)
-                                .testTag("rich_text_toolbar")
-                        )
-                    }
-                }
+
 
                 // Speech Dictation Active Banner
                 if (isListeningSpeech) {
@@ -799,113 +975,7 @@ fun NoteEditScreen(
                 item { Spacer(Modifier.height(24.dp)) }
             }
 
-            // Bottom Actions Toolbar (Images, Voice, Reminder)
-            Surface(
-                tonalElevation = 4.dp,
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        IconButton(
-                            onClick = { imagePickerLauncher.launch("image/*") },
-                            modifier = Modifier.testTag("add_image_button")
-                        ) {
-                            Icon(Icons.Default.Image, contentDescription = "Add Image", tint = MaterialTheme.colorScheme.primary)
-                        }
 
-                        IconButton(
-                            onClick = {
-                                type = if (type == "checklist") "text" else "checklist"
-                            }
-                        ) {
-                            Icon(
-                                Icons.Default.CheckBox,
-                                contentDescription = "Toggle Checklist",
-                                tint = if (type == "checklist") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        IconButton(
-                            onClick = {
-                                if (isRecordingAudio) {
-                                    val path = viewModel.audioRecorder.stopRecording()
-                                    isRecordingAudio = false
-                                    if (path != null) {
-                                        audioPath = path
-                                        type = "voice"
-                                    }
-                                } else {
-                                    val file = viewModel.audioRecorder.startRecording()
-                                    if (file != null) {
-                                        isRecordingAudio = true
-                                    }
-                                }
-                            },
-                            modifier = Modifier.testTag("record_voice_button")
-                        ) {
-                            Icon(
-                                Icons.Default.Mic,
-                                contentDescription = "Record Voice",
-                                tint = if (isRecordingAudio) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        IconButton(
-                            onClick = {
-                                val calendar = Calendar.getInstance()
-                                DatePickerDialog(
-                                    context,
-                                    { _, year, month, dayOfMonth ->
-                                        calendar.set(Calendar.YEAR, year)
-                                        calendar.set(Calendar.MONTH, month)
-                                        calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
-
-                                        TimePickerDialog(
-                                            context,
-                                            { _, hourOfDay, minute ->
-                                                calendar.set(Calendar.HOUR_OF_DAY, hourOfDay)
-                                                calendar.set(Calendar.MINUTE, minute)
-                                                calendar.set(Calendar.SECOND, 0)
-                                                val scheduledTime = calendar.timeInMillis
-                                                reminderAt = scheduledTime
-                                                val curNote = note
-                                                if (curNote != null) {
-                                                    viewModel.setReminder(context, curNote, scheduledTime)
-                                                }
-                                            },
-                                            calendar.get(Calendar.HOUR_OF_DAY),
-                                            calendar.get(Calendar.MINUTE),
-                                            true
-                                        ).show()
-                                    },
-                                    calendar.get(Calendar.YEAR),
-                                    calendar.get(Calendar.MONTH),
-                                    calendar.get(Calendar.DAY_OF_MONTH)
-                                ).show()
-                            },
-                            modifier = Modifier.testTag("set_reminder_button")
-                        ) {
-                            Icon(
-                                Icons.Default.Notifications,
-                                contentDescription = "Set Reminder",
-                                tint = if (reminderAt != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    Text(
-                        text = if (isNoteBlank()) "Draft (unsaved)" else "Autosaved",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                }
-            }
         }
 
         // Tag Picker Dialog

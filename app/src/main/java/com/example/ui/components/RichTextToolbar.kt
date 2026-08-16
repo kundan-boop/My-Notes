@@ -18,14 +18,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.automirrored.filled.Redo
-import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.FormatAlignCenter
 import androidx.compose.material.icons.filled.FormatAlignLeft
 import androidx.compose.material.icons.filled.FormatAlignRight
 import androidx.compose.material.icons.filled.FormatBold
-import androidx.compose.material.icons.filled.FormatClear
 import androidx.compose.material.icons.filled.FormatColorFill
 import androidx.compose.material.icons.filled.FormatColorText
 import androidx.compose.material.icons.filled.FormatItalic
@@ -33,7 +30,9 @@ import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.FormatStrikethrough
 import androidx.compose.material.icons.filled.FormatUnderlined
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -65,7 +64,13 @@ val HIGHLIGHT_COLORS = listOf(
     ColorOption("Green", "#BBF7D0", Color(0xFFBBF7D0)),
     ColorOption("Cyan", "#BAE6FD", Color(0xFFBAE6FD)),
     ColorOption("Peach", "#FED7AA", Color(0xFFFED7AA)),
-    ColorOption("Lavender", "#E9D5FF", Color(0xFFE9D5FF))
+    ColorOption("Lavender", "#E9D5FF", Color(0xFFE9D5FF)),
+    ColorOption("Pink", "#FBCFE8", Color(0xFFFBCFE8)),
+    ColorOption("Rose", "#FECDD3", Color(0xFFFECDD3)),
+    ColorOption("Amber", "#FDE68A", Color(0xFFFDE68A)),
+    ColorOption("Teal", "#CCFBF1", Color(0xFFCCFBF1)),
+    ColorOption("Sky", "#E0F2FE", Color(0xFFE0F2FE)),
+    ColorOption("Violet", "#EDE9FE", Color(0xFFEDE9FE))
 )
 
 val FONT_COLORS = listOf(
@@ -73,18 +78,22 @@ val FONT_COLORS = listOf(
     ColorOption("Blue", "#3B82F6", Color(0xFF3B82F6)),
     ColorOption("Green", "#10B981", Color(0xFF10B981)),
     ColorOption("Amber", "#F59E0B", Color(0xFFF59E0B)),
-    ColorOption("Purple", "#8B5CF6", Color(0xFF8B5CF6))
+    ColorOption("Purple", "#8B5CF6", Color(0xFF8B5CF6)),
+    ColorOption("Pink", "#EC4899", Color(0xFFEC4899)),
+    ColorOption("Teal", "#14B8A6", Color(0xFF14B8A6)),
+    ColorOption("Indigo", "#6366F1", Color(0xFF6366F1)),
+    ColorOption("Orange", "#F97316", Color(0xFFF97316)),
+    ColorOption("Cyan", "#06B6D4", Color(0xFF06B6D4)),
+    ColorOption("Lime", "#84CC16", Color(0xFF84CC16))
 )
 
 @Composable
 fun RichTextToolbar(
     isChecklistMode: Boolean,
     activeFormats: ActiveFormats = ActiveFormats(),
-    canUndo: Boolean = false,
-    canRedo: Boolean = false,
-    onUndo: () -> Unit,
-    onRedo: () -> Unit,
+    onInsertImage: () -> Unit,
     onToggleChecklistMode: () -> Unit,
+    onOpenReminder: () -> Unit,
     onToggleBold: () -> Unit,
     onToggleItalic: () -> Unit,
     onToggleUnderline: () -> Unit,
@@ -95,7 +104,6 @@ fun RichTextToolbar(
     onApplyTextColor: (hex: String) -> Unit,
     onInsertBulletList: () -> Unit,
     onInsertNumberedList: () -> Unit,
-    onClearFormatting: () -> Unit,
     onStartSpeechToText: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -118,37 +126,7 @@ fun RichTextToolbar(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Undo Button
-            IconButton(
-                onClick = onUndo,
-                enabled = canUndo,
-                modifier = Modifier.testTag("toolbar_undo")
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.Undo,
-                    contentDescription = "Undo",
-                    tint = if (canUndo) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            // Redo Button
-            IconButton(
-                onClick = onRedo,
-                enabled = canRedo,
-                modifier = Modifier.testTag("toolbar_redo")
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.Redo,
-                    contentDescription = "Redo",
-                    tint = if (canRedo) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            ToolbarDivider()
-
-            // Checklist mode toggle
+            // 1. Checklist mode toggle
             ToolbarToggleIconButton(
                 icon = Icons.Default.CheckBox,
                 contentDescription = "Checklist mode",
@@ -157,7 +135,9 @@ fun RichTextToolbar(
                 onClick = onToggleChecklistMode
             )
 
-            // Bold
+            ToolbarDivider()
+
+            // 4. Bold
             ToolbarToggleIconButton(
                 icon = Icons.Default.FormatBold,
                 contentDescription = "Format bold",
@@ -166,7 +146,7 @@ fun RichTextToolbar(
                 onClick = onToggleBold
             )
 
-            // Italic
+            // 5. Italic
             ToolbarToggleIconButton(
                 icon = Icons.Default.FormatItalic,
                 contentDescription = "Format italic",
@@ -175,7 +155,7 @@ fun RichTextToolbar(
                 onClick = onToggleItalic
             )
 
-            // Underline
+            // 6. Underline
             ToolbarToggleIconButton(
                 icon = Icons.Default.FormatUnderlined,
                 contentDescription = "Format underline",
@@ -184,7 +164,7 @@ fun RichTextToolbar(
                 onClick = onToggleUnderline
             )
 
-            // Strikethrough
+            // 7. Strikethrough
             ToolbarToggleIconButton(
                 icon = Icons.Default.FormatStrikethrough,
                 contentDescription = "Format strikethrough",
@@ -193,7 +173,109 @@ fun RichTextToolbar(
                 onClick = onToggleStrikethrough
             )
 
-            // Font Size Dropdown
+            // 8. Highlight Color Dropdown
+            Box {
+                IconButton(
+                    onClick = { showHighlightMenu = true },
+                    modifier = Modifier
+                        .testTag("toolbar_highlight")
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (activeFormats.highlightColor != null) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            else Color.Transparent
+                        )
+                ) {
+                    Icon(
+                        Icons.Default.FormatColorFill,
+                        contentDescription = "Text highlight color",
+                        tint = if (activeFormats.highlightColor != null) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = showHighlightMenu,
+                    onDismissRequest = { showHighlightMenu = false }
+                ) {
+                    Text(
+                        text = "Highlight Color",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        HIGHLIGHT_COLORS.forEach { option ->
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(option.color)
+                                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), CircleShape)
+                                    .clickable {
+                                        onApplyHighlight(option.hex)
+                                        showHighlightMenu = false
+                                    }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 9. Text Color Dropdown
+            Box {
+                IconButton(
+                    onClick = { showColorMenu = true },
+                    modifier = Modifier
+                        .testTag("toolbar_font_color")
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (activeFormats.textColor != null) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            else Color.Transparent
+                        )
+                ) {
+                    Icon(
+                        Icons.Default.FormatColorText,
+                        contentDescription = "Text font color",
+                        tint = if (activeFormats.textColor != null) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = showColorMenu,
+                    onDismissRequest = { showColorMenu = false }
+                ) {
+                    Text(
+                        text = "Text Color",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FONT_COLORS.forEach { option ->
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(option.color)
+                                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), CircleShape)
+                                    .clickable {
+                                        onApplyTextColor(option.hex)
+                                        showColorMenu = false
+                                    }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 10. Font Size Dropdown
             Box {
                 IconButton(
                     onClick = { showSizeMenu = true },
@@ -241,7 +323,7 @@ fun RichTextToolbar(
                 }
             }
 
-            // Alignment Dropdown / Selector
+            // 11. Alignment Dropdown
             Box {
                 val alignIcon = when (activeFormats.alignment) {
                     TextAlignmentPreset.CENTER -> Icons.Default.FormatAlignCenter
@@ -304,111 +386,7 @@ fun RichTextToolbar(
                 }
             }
 
-            ToolbarDivider()
-
-            // Highlight Color Dropdown
-            Box {
-                IconButton(
-                    onClick = { showHighlightMenu = true },
-                    modifier = Modifier
-                        .testTag("toolbar_highlight")
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(
-                            if (activeFormats.highlightColor != null) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                            else Color.Transparent
-                        )
-                ) {
-                    Icon(
-                        Icons.Default.FormatColorFill,
-                        contentDescription = "Text highlight color",
-                        tint = if (activeFormats.highlightColor != null) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-
-                DropdownMenu(
-                    expanded = showHighlightMenu,
-                    onDismissRequest = { showHighlightMenu = false }
-                ) {
-                    Text(
-                        text = "Highlight Color",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        HIGHLIGHT_COLORS.forEach { option ->
-                            Box(
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(CircleShape)
-                                    .background(option.color)
-                                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), CircleShape)
-                                    .clickable {
-                                        onApplyHighlight(option.hex)
-                                        showHighlightMenu = false
-                                    }
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Text Color Dropdown
-            Box {
-                IconButton(
-                    onClick = { showColorMenu = true },
-                    modifier = Modifier
-                        .testTag("toolbar_font_color")
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(
-                            if (activeFormats.textColor != null) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                            else Color.Transparent
-                        )
-                ) {
-                    Icon(
-                        Icons.Default.FormatColorText,
-                        contentDescription = "Text font color",
-                        tint = if (activeFormats.textColor != null) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-
-                DropdownMenu(
-                    expanded = showColorMenu,
-                    onDismissRequest = { showColorMenu = false }
-                ) {
-                    Text(
-                        text = "Text Color",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        FONT_COLORS.forEach { option ->
-                            Box(
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(CircleShape)
-                                    .background(option.color)
-                                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), CircleShape)
-                                    .clickable {
-                                        onApplyTextColor(option.hex)
-                                        showColorMenu = false
-                                    }
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Bullet List
+            // 12. Bullet List
             IconButton(
                 onClick = onInsertBulletList,
                 modifier = Modifier.testTag("toolbar_bullet")
@@ -421,7 +399,7 @@ fun RichTextToolbar(
                 )
             }
 
-            // Numbered List
+            // 13. Numbered List
             IconButton(
                 onClick = onInsertNumberedList,
                 modifier = Modifier.testTag("toolbar_numbered")
@@ -436,20 +414,7 @@ fun RichTextToolbar(
 
             ToolbarDivider()
 
-            // Clear Formatting
-            IconButton(
-                onClick = onClearFormatting,
-                modifier = Modifier.testTag("toolbar_clear_format")
-            ) {
-                Icon(
-                    Icons.Default.FormatClear,
-                    contentDescription = "Clear formatting",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            // Speech-to-Text Dictation
+            // 14. Speech-to-Text Dictation
             IconButton(
                 onClick = onStartSpeechToText,
                 modifier = Modifier.testTag("toolbar_speech_to_text")
