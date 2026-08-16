@@ -22,6 +22,9 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE isTrashed = 0 AND isArchived = 0 AND reminderAt IS NOT NULL AND reminderAt > :now ORDER BY reminderAt ASC")
     fun getUpcomingReminders(now: Long = System.currentTimeMillis()): Flow<List<NoteEntity>>
 
+    @Query("SELECT * FROM notes WHERE isTrashed = 0 AND isArchived = 0 AND reminderAt IS NOT NULL AND reminderAt > :now ORDER BY reminderAt ASC")
+    suspend fun getUpcomingRemindersSync(now: Long = System.currentTimeMillis()): List<NoteEntity>
+
     @Query("SELECT * FROM notes WHERE id = :id")
     fun getNoteById(id: String): Flow<NoteEntity?>
 

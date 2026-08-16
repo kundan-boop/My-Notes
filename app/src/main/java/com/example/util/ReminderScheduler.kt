@@ -8,6 +8,10 @@ import android.os.Build
 
 object ReminderScheduler {
 
+    fun scheduleReminder(context: Context, note: com.example.data.local.NoteEntity, timeMs: Long) {
+        scheduleReminder(context, note.id, note.title, note.content, timeMs)
+    }
+
     fun scheduleReminder(context: Context, noteId: String, title: String, content: String, timeMs: Long) {
         if (timeMs <= System.currentTimeMillis()) return
 
