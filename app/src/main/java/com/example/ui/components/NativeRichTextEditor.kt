@@ -79,53 +79,94 @@ class RichEditText @JvmOverloads constructor(
             override fun afterTextChanged(s: Editable?) {
                 if (isFormatting || s == null) return
 
-                if (countAdded > 0) {
-                    val endPos = startPos + countAdded
-                    applyPendingStyles(s, startPos, endPos)
+                try {
+                    if (countAdded > 0) {
+                        val safeStart = startPos.coerceIn(0, s.length)
+                        val safeEnd = (startPos + countAdded).coerceIn(safeStart, s.length)
+                        if (safeStart < safeEnd) {
+                            applyPendingStyles(s, safeStart, safeEnd)
 
-                    val insertedText = s.subSequence(startPos, endPos).toString()
-                    if (insertedText.contains('\n')) {
-                        val newlineIndex = startPos + insertedText.indexOf('\n')
-                        val prevLineStart = s.lastIndexOf('\n', (newlineIndex - 2).coerceAtLeast(0)).let { if (it == -1) 0 else it + 1 }
-                        val prevLineText = s.subSequence(prevLineStart, newlineIndex).toString().trimEnd()
+                            val insertedText = s.subSequence(safeStart, safeEnd).toString()
+                            if (insertedText.contains('\n')) {
+                                val newlineRel = insertedText.indexOf('\n')
+                                val newlineIndex = (safeStart + newlineRel).coerceIn(0, s.length)
 
-                        val bulletMatch = Regex("^([•\\-*])\\s*").find(prevLineText)
-                        if (bulletMatch != null) {
-                            val bulletSymbol = bulletMatch.groupValues[1]
-                            val contentWithoutBullet = prevLineText.removePrefix(bulletSymbol).trim()
-                            if (contentWithoutBullet.isEmpty()) {
-                                isFormatting = true
-                                s.delete(prevLineStart, newlineIndex + 1)
-                                isFormatting = false
-                                setSelection(prevLineStart)
-                            } else {
-                                val nextBullet = "$bulletSymbol "
-                                isFormatting = true
-                                s.insert(newlineIndex + 1, nextBullet)
-                                isFormatting = false
-                                setSelection(newlineIndex + 1 + nextBullet.length)
-                            }
-                        } else {
-                            val numberedMatch = Regex("^(\\d+)\\.\\s*").find(prevLineText)
-                            if (numberedMatch != null) {
-                                val numStr = numberedMatch.groupValues[1]
-                                val contentWithoutNum = prevLineText.removePrefix("$numStr.").trim()
-                                if (contentWithoutNum.isEmpty()) {
-                                    isFormatting = true
-                                    s.delete(prevLineStart, newlineIndex + 1)
-                                    isFormatting = false
-                                    setSelection(prevLineStart)
-                                } else {
-                                    val nextNum = numStr.toInt() + 1
-                                    val nextNumStr = "$nextNum. "
-                                    isFormatting = true
-                                    s.insert(newlineIndex + 1, nextNumStr)
-                                    isFormatting = false
-                                    setSelection(newlineIndex + 1 + nextNumStr.length)
+                                if (newlineIndex > 0) {
+                                    val searchBefore = newlineIndex - 1
+                                    val prevNewline = if (searchBefore > 0) s.lastIndexOf('\n', searchBefore - 1) else -1
+                                    val prevLineStart = if (prevNewline == -1) 0 else (prevNewline + 1).coerceIn(0, newlineIndex)
+
+                                    if (prevLineStart <= newlineIndex && prevLineStart >= 0 && newlineIndex <= s.length) {
+                                        val prevLineText = s.subSequence(prevLineStart, newlineIndex).toString().trimEnd()
+
+                                        val bulletMatch = Regex("^([•▪■✦◆▸➢○\\-*▲★➜➔➝▣❏◀◄❖⮞☽✣✹⤢⇨◈✾❂✓➞❐❑]|->|=>)\\s*").find(prevLineText)
+                                        if (bulletMatch != null) {
+                                            val bulletSymbol = bulletMatch.groupValues[1]
+                                            val contentWithoutBullet = prevLineText.removePrefix(bulletSymbol).trim()
+                                            if (contentWithoutBullet.isEmpty()) {
+                                                isFormatting = true
+                                                val delEnd = (newlineIndex + 1).coerceIn(prevLineStart, s.length)
+                                                s.delete(prevLineStart, delEnd)
+                                                isFormatting = false
+                                                setSelection(prevLineStart.coerceIn(0, s.length))
+                                            } else {
+                                                val nextBullet = "$bulletSymbol "
+                                                isFormatting = true
+                                                val insPos = (newlineIndex + 1).coerceIn(0, s.length)
+                                                s.insert(insPos, nextBullet)
+                                                isFormatting = false
+                                                setSelection((insPos + nextBullet.length).coerceIn(0, s.length))
+                                            }
+                                        } else {
+                                            val numberedMatch = Regex("^(\\d+)\\.\\s*").find(prevLineText)
+                                            val alphaMatch = Regex("^([a-z])\\.\\s*").find(prevLineText)
+                                            if (numberedMatch != null) {
+                                                val numStr = numberedMatch.groupValues[1]
+                                                val contentWithoutNum = prevLineText.removePrefix("$numStr.").trim()
+                                                if (contentWithoutNum.isEmpty()) {
+                                                    isFormatting = true
+                                                    val delEnd = (newlineIndex + 1).coerceIn(prevLineStart, s.length)
+                                                    s.delete(prevLineStart, delEnd)
+                                                    isFormatting = false
+                                                    setSelection(prevLineStart.coerceIn(0, s.length))
+                                                } else {
+                                                    val nextNum = (numStr.toLongOrNull() ?: 1L) + 1
+                                                    val nextNumStr = "$nextNum. "
+                                                    isFormatting = true
+                                                    val insPos = (newlineIndex + 1).coerceIn(0, s.length)
+                                                    s.insert(insPos, nextNumStr)
+                                                    isFormatting = false
+                                                    setSelection((insPos + nextNumStr.length).coerceIn(0, s.length))
+                                                }
+                                            } else if (alphaMatch != null) {
+                                                val charStr = alphaMatch.groupValues[1]
+                                                val contentWithoutAlpha = prevLineText.removePrefix("$charStr.").trim()
+                                                if (contentWithoutAlpha.isEmpty()) {
+                                                    isFormatting = true
+                                                    val delEnd = (newlineIndex + 1).coerceIn(prevLineStart, s.length)
+                                                    s.delete(prevLineStart, delEnd)
+                                                    isFormatting = false
+                                                    setSelection(prevLineStart.coerceIn(0, s.length))
+                                                } else {
+                                                    val nextChar = if (charStr[0] < 'z') (charStr[0] + 1) else 'z'
+                                                    val nextStr = "$nextChar. "
+                                                    isFormatting = true
+                                                    val insPos = (newlineIndex + 1).coerceIn(0, s.length)
+                                                    s.insert(insPos, nextStr)
+                                                    isFormatting = false
+                                                    setSelection((insPos + nextStr.length).coerceIn(0, s.length))
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
+                } catch (e: Exception) {
+                    android.util.Log.e("NativeRichTextEditor", "Error processing text change", e)
+                } finally {
+                    isFormatting = false
                 }
 
                 notifyHtmlChanged()
@@ -360,33 +401,43 @@ class RichEditText @JvmOverloads constructor(
         onSelectionChanged(selectionStart, selectionEnd)
     }
 
-    fun insertBulletList() {
+    fun insertBulletList(marker: String = "•") {
         val s = text ?: return
-        val selStart = selectionStart
-        val lineStart = s.lastIndexOf('\n', (selStart - 1).coerceAtLeast(0)).let { if (it == -1) 0 else it + 1 }
-        val bulletStr = "• "
+        val selStart = selectionStart.coerceIn(0, s.length)
+        val lineStart = if (selStart <= 0) 0 else {
+            val searchPos = (selStart - 1).coerceIn(0, (s.length - 1).coerceAtLeast(0))
+            val prevNl = s.lastIndexOf('\n', searchPos)
+            if (prevNl == -1) 0 else (prevNl + 1).coerceIn(0, s.length)
+        }
+        val bulletStr = "$marker "
         s.insert(lineStart, bulletStr)
-        setSelection(selStart + bulletStr.length)
+        setSelection((selStart + bulletStr.length).coerceIn(0, s.length))
         notifyHtmlChanged()
     }
 
-    fun insertNumberedList() {
+    fun insertNumberedList(prefix: String = "1.") {
         val s = text ?: return
-        val selStart = selectionStart
-        val lineStart = s.lastIndexOf('\n', (selStart - 1).coerceAtLeast(0)).let { if (it == -1) 0 else it + 1 }
-        val numStr = "1. "
+        val selStart = selectionStart.coerceIn(0, s.length)
+        val lineStart = if (selStart <= 0) 0 else {
+            val searchPos = (selStart - 1).coerceIn(0, (s.length - 1).coerceAtLeast(0))
+            val prevNl = s.lastIndexOf('\n', searchPos)
+            if (prevNl == -1) 0 else (prevNl + 1).coerceIn(0, s.length)
+        }
+        val numStr = "$prefix "
         s.insert(lineStart, numStr)
-        setSelection(selStart + numStr.length)
+        setSelection((selStart + numStr.length).coerceIn(0, s.length))
         notifyHtmlChanged()
     }
 
     fun clearFormatting() {
-        val selStart = selectionStart
-        val selEnd = selectionEnd
         val s = text ?: return
+        val selStart = selectionStart.coerceIn(0, s.length)
+        val selEnd = selectionEnd.coerceIn(0, s.length)
 
         if (selStart != selEnd && selStart >= 0 && selEnd <= s.length) {
-            val allSpans = s.getSpans(selStart, selEnd, Any::class.java)
+            val start = minOf(selStart, selEnd)
+            val end = maxOf(selStart, selEnd)
+            val allSpans = s.getSpans(start, end, Any::class.java)
             allSpans.forEach { span ->
                 if (span is StyleSpan || span is UnderlineSpan || span is StrikethroughSpan ||
                     span is ForegroundColorSpan || span is BackgroundColorSpan ||
@@ -407,11 +458,11 @@ class RichEditText @JvmOverloads constructor(
     }
 
     fun insertTextAtCursor(textToInsert: String) {
-        val selStart = selectionStart.coerceAtLeast(0)
-        val selEnd = selectionEnd.coerceAtLeast(0)
         val s = text ?: return
+        val selStart = selectionStart.coerceIn(0, s.length)
+        val selEnd = selectionEnd.coerceIn(selStart, s.length)
         s.replace(selStart, selEnd, textToInsert)
-        setSelection(selStart + textToInsert.length)
+        setSelection((selStart + textToInsert.length).coerceIn(0, s.length))
         notifyHtmlChanged()
     }
 }
@@ -485,8 +536,8 @@ class NativeRichTextEditorState(initialHtml: String = "") {
     fun setAlignment(alignment: TextAlignmentPreset) = editTextRef?.setAlignmentPreset(alignment)
     fun setHighlight(hex: String) = editTextRef?.setHighlight(hex)
     fun setTextColor(hex: String) = editTextRef?.setTextColorHex(hex)
-    fun toggleBulletList() = editTextRef?.insertBulletList()
-    fun toggleNumberedList() = editTextRef?.insertNumberedList()
+    fun toggleBulletList(marker: String = "•") = editTextRef?.insertBulletList(marker)
+    fun toggleNumberedList(prefix: String = "1.") = editTextRef?.insertNumberedList(prefix)
     fun clearFormatting() = editTextRef?.clearFormatting()
     fun insertText(text: String) = editTextRef?.insertTextAtCursor(text)
 

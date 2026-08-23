@@ -109,6 +109,24 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         initialValue = true
     )
 
+    val driveFolderSelected: StateFlow<Boolean> = repository.driveFolderSelected.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = false
+    )
+
+    val isDataDirty: StateFlow<Boolean> = repository.isDataDirty.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = false
+    )
+
+    val lastBackupDateString: StateFlow<String> = repository.lastBackupDateString.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = ""
+    )
+
     val lastRotatingSlot: StateFlow<Int> = repository.lastRotatingSlot.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -176,6 +194,19 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun setDriveFolderName(name: String) {
         viewModelScope.launch {
             repository.setDriveFolderName(name)
+            repository.setDriveFolderSelected(true)
+        }
+    }
+
+    fun setDriveFolderSelected(selected: Boolean) {
+        viewModelScope.launch {
+            repository.setDriveFolderSelected(selected)
+        }
+    }
+
+    fun setDataDirty(isDirty: Boolean) {
+        viewModelScope.launch {
+            repository.setDataDirty(isDirty)
         }
     }
 

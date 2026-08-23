@@ -15,10 +15,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -27,6 +29,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,7 +42,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.fragment.app.FragmentActivity
 import com.example.data.repository.SettingsRepository
+import com.example.util.BiometricHelper
 
 @Composable
 fun AppLockOverlay(
@@ -51,11 +56,35 @@ fun AppLockOverlay(
     val securityQuestion by settingsRepo.securityQuestion.collectAsState(initial = "What is your favorite book?")
     val securityAnswer by settingsRepo.securityAnswer.collectAsState(initial = "")
 
+    val isBiometricAvailable = remember { BiometricHelper.isBiometricAvailable(context) }
+    val activity = context as? FragmentActivity
+
     var enteredPin by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showForgotPinDialog by remember { mutableStateOf(false) }
     var recoveryAnswerInput by remember { mutableStateOf("") }
     var recoveryErrorMessage by remember { mutableStateOf<String?>(null) }
+
+    fun triggerBiometricPrompt() {
+        if (activity != null && isBiometricAvailable) {
+            BiometricHelper.showBiometricPrompt(
+                activity = activity,
+                title = "Unlock My Notes",
+                subtitle = "Use fingerprint or face recognition to unlock",
+                negativeButtonText = "Use PIN",
+                onSuccess = { onUnlocked() },
+                onError = { err -> errorMessage = err },
+                onFailed = { /* Fall back silently to PIN */ }
+            )
+        }
+    }
+
+    // Default to native biometric unlock on open if available
+    LaunchedEffect(Unit) {
+        if (isBiometricAvailable && activity != null) {
+            triggerBiometricPrompt()
+        }
+    }
 
     fun handleDigit(digit: String) {
         if (enteredPin.length < 4) {
@@ -87,7 +116,7 @@ fun AppLockOverlay(
             verticalArrangement = Arrangement.Center
         ) {
             Icon(
-                imageVector = Icons.Default.Lock,
+                imageVector = if (isBiometricAvailable) Icons.Default.Fingerprint else Icons.Default.Lock,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(64.dp)
@@ -104,12 +133,25 @@ fun AppLockOverlay(
             Spacer(Modifier.height(8.dp))
 
             Text(
-                text = "Enter your 4-digit PIN to continue",
+                text = if (isBiometricAvailable) "Use biometric authentication or enter 4-digit PIN" else "Enter your 4-digit PIN to continue",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(24.dp))
+
+            // Biometric quick button if biometric is available
+            if (isBiometricAvailable && activity != null) {
+                FilledTonalButton(
+                    onClick = { triggerBiometricPrompt() },
+                    modifier = Modifier.testTag("app_lock_biometric_button")
+                ) {
+                    Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Unlock with Biometrics")
+                }
+                Spacer(Modifier.height(16.dp))
+            }
 
             // PIN Dots
             Row(
@@ -139,7 +181,7 @@ fun AppLockOverlay(
                 )
             }
 
-            Spacer(Modifier.height(48.dp))
+            Spacer(Modifier.height(32.dp))
 
             // Keypad Grid
             Column(
@@ -249,3 +291,4 @@ fun AppLockOverlay(
         )
     }
 }
+

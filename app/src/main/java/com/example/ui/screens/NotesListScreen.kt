@@ -26,9 +26,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.lazy.staggeredgrid.itemsIndexed
+import com.example.util.BiometricHelper
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -44,9 +47,11 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Lock
 import com.example.data.repository.SettingsRepository
+import com.example.ui.theme.NoteColors
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sort
@@ -136,6 +141,7 @@ fun NotesListScreen(
     var recoveryAnswerInput by remember { mutableStateOf("") }
     var recoveryErrorMessage by remember { mutableStateOf<String?>(null) }
     var showSortMenu by remember { mutableStateOf(false) }
+    var showColorFilterDialog by remember { mutableStateOf(false) }
 
     val pinnedNotes = remember(activeNotes) { activeNotes.filter { it.isPinned } }
     val otherNotes = remember(activeNotes) { activeNotes.filter { !it.isPinned } }
@@ -384,7 +390,7 @@ fun NotesListScreen(
                             }
                         }
 
-                        // Filter chips row: All, Notes, Checklist, and Tags
+                        // Filter chips row: All, Notes, Checklist, Tags, and dedicated Color Filter
                         Spacer(Modifier.height(8.dp))
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -392,10 +398,11 @@ fun NotesListScreen(
                         ) {
                             item {
                                 FilterChip(
-                                    selected = selectedTypeFilter == null && selectedTagFilter == null,
+                                    selected = selectedTypeFilter == null && selectedTagFilter == null && selectedColorFilter == null,
                                     onClick = {
                                         viewModel.setSelectedTypeFilter(null)
                                         viewModel.setSelectedTagFilter(null)
+                                        viewModel.setSelectedColorFilter(null)
                                     },
                                     label = { Text("All") }
                                 )
@@ -414,6 +421,44 @@ fun NotesListScreen(
                                     label = { Text("Checklist") },
                                     leadingIcon = { Icon(Icons.Default.CheckBox, contentDescription = null, modifier = Modifier.size(16.dp)) }
                                 )
+                            }
+
+                            // Dedicated Color Filter Chip with Palette Picker
+                            item {
+                                if (selectedColorFilter == null) {
+                                    FilterChip(
+                                        selected = false,
+                                        onClick = { showColorFilterDialog = true },
+                                        label = { Text("Color") },
+                                        leadingIcon = { Icon(Icons.Default.Palette, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                        modifier = Modifier.testTag("filter_chip_color_picker")
+                                    )
+                                } else {
+                                    val activePreset = NoteColors.getPreset(selectedColorFilter!!)
+                                    FilterChip(
+                                        selected = true,
+                                        onClick = { showColorFilterDialog = true },
+                                        label = { Text(activePreset.name) },
+                                        leadingIcon = {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(14.dp)
+                                                    .clip(CircleShape)
+                                                    .background(activePreset.lightBg)
+                                                    .border(1.dp, activePreset.lightBorder, CircleShape)
+                                            )
+                                        },
+                                        trailingIcon = {
+                                            IconButton(
+                                                onClick = { viewModel.setSelectedColorFilter(null) },
+                                                modifier = Modifier.size(18.dp)
+                                            ) {
+                                                Icon(Icons.Default.Close, contentDescription = "Clear color filter", modifier = Modifier.size(14.dp))
+                                            }
+                                        },
+                                        modifier = Modifier.testTag("filter_chip_color_active")
+                                    )
+                                }
                             }
 
                             allTags.forEach { tag ->
@@ -497,7 +542,7 @@ fun NotesListScreen(
                                             modifier = Modifier.padding(vertical = 2.dp)
                                         )
                                     }
-                                    items(pinnedNotes, key = { it.id }) { note ->
+                                    itemsIndexed(pinnedNotes, key = { _, note -> note.id }) { index, note ->
                                         NoteCard(
                                             note = note,
                                             isUnlocked = unlockedNoteIds.contains(note.id),
@@ -505,7 +550,9 @@ fun NotesListScreen(
                                             onTogglePin = { viewModel.togglePin(note.id) },
                                             onToggleArchive = { viewModel.toggleArchive(note.id) },
                                             onMoveToTrash = { viewModel.moveToTrash(note.id) },
-                                            onColorPickRequest = { colorPickNoteId = note.id }
+                                            onColorPickRequest = { colorPickNoteId = note.id },
+                                            onMovePinnedLeft = if (index > 0) { { viewModel.movePinnedNote(note.id, -1) } } else null,
+                                            onMovePinnedRight = if (index < pinnedNotes.size - 1) { { viewModel.movePinnedNote(note.id, 1) } } else null
                                         )
                                     }
                                     item(span = androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan.FullLine) {
@@ -546,7 +593,7 @@ fun NotesListScreen(
                                             modifier = Modifier.padding(vertical = 2.dp)
                                         )
                                     }
-                                    items(pinnedNotes, key = { it.id }) { note ->
+                                    itemsIndexed(pinnedNotes, key = { _, note -> note.id }) { index, note ->
                                         NoteCard(
                                             note = note,
                                             isUnlocked = unlockedNoteIds.contains(note.id),
@@ -554,7 +601,9 @@ fun NotesListScreen(
                                             onTogglePin = { viewModel.togglePin(note.id) },
                                             onToggleArchive = { viewModel.toggleArchive(note.id) },
                                             onMoveToTrash = { viewModel.moveToTrash(note.id) },
-                                            onColorPickRequest = { colorPickNoteId = note.id }
+                                            onColorPickRequest = { colorPickNoteId = note.id },
+                                            onMovePinnedLeft = if (index > 0) { { viewModel.movePinnedNote(note.id, -1) } } else null,
+                                            onMovePinnedRight = if (index < pinnedNotes.size - 1) { { viewModel.movePinnedNote(note.id, 1) } } else null
                                         )
                                     }
                                     item {
@@ -627,6 +676,23 @@ fun NotesListScreen(
     // Protected Note Unlock Password Dialog
     if (noteToUnlock != null) {
         val target = noteToUnlock!!
+        val fragmentActivity = context as? androidx.fragment.app.FragmentActivity
+
+        androidx.compose.runtime.LaunchedEffect(target.id) {
+            if (fragmentActivity != null && BiometricHelper.isBiometricAvailable(context)) {
+                BiometricHelper.showBiometricPrompt(
+                    activity = fragmentActivity,
+                    title = "Unlock Protected Note",
+                    subtitle = "Use fingerprint or face unlock to open note",
+                    onSuccess = {
+                        viewModel.unlockNote(target.id)
+                        val destId = target.id
+                        noteToUnlock = null
+                        onNoteClick(destId)
+                    }
+                )
+            }
+        }
 
         if (showSecurityRecovery) {
             AlertDialog(
@@ -755,6 +821,55 @@ fun NotesListScreen(
                 }
             )
         }
+    }
+
+    // Filter Notes by Color Dialog
+    if (showColorFilterDialog) {
+        AlertDialog(
+            onDismissRequest = { showColorFilterDialog = false },
+            icon = { Icon(Icons.Default.Palette, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Filter Notes by Color") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Select a color label (Coral, Ruby, Peach, etc.) to show only matching notes:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+
+                    ColorPicker(
+                        selectedColorId = selectedColorFilter ?: "default",
+                        onColorSelected = { colorId ->
+                            if (colorId == "default") {
+                                viewModel.setSelectedColorFilter(null)
+                            } else {
+                                viewModel.setSelectedColorFilter(colorId)
+                            }
+                            showColorFilterDialog = false
+                        }
+                    )
+                }
+            },
+            confirmButton = {
+                if (selectedColorFilter != null) {
+                    TextButton(
+                        onClick = {
+                            viewModel.setSelectedColorFilter(null)
+                            showColorFilterDialog = false
+                        }
+                    ) {
+                        Text("Clear Color Filter")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showColorFilterDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
     }
 }
 

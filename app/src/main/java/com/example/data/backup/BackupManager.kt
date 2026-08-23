@@ -43,33 +43,23 @@ data class BackupDataDto(
 data class BackupSlotInfo(
     val slotNumber: Int, // 1..7
     val fileName: String, // "Day-1.json"
-    val dayName: String, // "Sunday", "Monday", etc.
+    val dayName: String,
     val exists: Boolean,
     val lastModified: Long,
-    val sizeBytes: Long
+    val sizeBytes: Long,
+    val isLatest: Boolean = false
 )
 
 object BackupManager {
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val adapter = moshi.adapter(BackupDataDto::class.java)
 
-    fun getTodaySlot(): Int {
-        val cal = java.util.Calendar.getInstance()
-        // 1=Sunday, 2=Monday, 3=Tuesday, 4=Wednesday, 5=Thursday, 6=Friday, 7=Saturday
-        return cal.get(java.util.Calendar.DAY_OF_WEEK)
+    fun getTodayDateString(): String {
+        return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
     }
 
     fun getSlotDayName(slot: Int): String {
-        return when (slot) {
-            1 -> "Sunday"
-            2 -> "Monday"
-            3 -> "Tuesday"
-            4 -> "Wednesday"
-            5 -> "Thursday"
-            6 -> "Friday"
-            7 -> "Saturday"
-            else -> "Day $slot"
-        }
+        return "Slot #$slot"
     }
 
     fun exportBackupJson(context: Context, notes: List<NoteEntity>, tags: List<TagEntity>): String {
@@ -158,19 +148,55 @@ object BackupManager {
         return dir
     }
 
-    fun getBackupSlotsInfo(context: Context): List<BackupSlotInfo> {
+    fun getBackupSlotsInfo(context: Context, latestSlot: Int = 0): List<BackupSlotInfo> {
         val dir = getRotatingBackupDir(context)
         return (1..7).map { slot ->
             val file = File(dir, "Day-$slot.json")
+            val exists = file.exists()
+            val lastModified = if (exists) file.lastModified() else 0L
+            val dateLabel = if (exists) {
+                val sdf = SimpleDateFormat("MMM dd", Locale.getDefault())
+                " (${sdf.format(Date(lastModified))})"
+            } else ""
             BackupSlotInfo(
                 slotNumber = slot,
                 fileName = "Day-$slot.json",
-                dayName = getSlotDayName(slot),
-                exists = file.exists(),
-                lastModified = if (file.exists()) file.lastModified() else 0L,
-                sizeBytes = if (file.exists()) file.length() else 0L
+                dayName = "Slot #$slot$dateLabel",
+                exists = exists,
+                lastModified = lastModified,
+                sizeBytes = if (exists) file.length() else 0L,
+                isLatest = (slot == latestSlot && exists)
             )
         }
+    }
+
+    /**
+     * Executes 7-day rolling backup:
+     * - If called multiple times on the same calendar day, overwrites the same slot
+     * - On a new calendar day, advances slot (1 -> 2 -> ... -> 7 -> 1) maintaining at most 7 files
+     */
+    fun performRollingBackup(
+        context: Context,
+        notes: List<NoteEntity>,
+        tags: List<TagEntity>,
+        lastBackupDateStr: String,
+        lastSlot: Int
+    ): Triple<Int, String, String> {
+        val todayStr = getTodayDateString()
+        val targetSlot = if (lastBackupDateStr == todayStr && lastSlot in 1..7) {
+            // Same day: Overwrite existing day slot
+            lastSlot
+        } else {
+            // New calendar day: Advance slot (1..7 rolling window)
+            if (lastSlot in 1..6) lastSlot + 1 else 1
+        }
+
+        val dir = getRotatingBackupDir(context)
+        val file = File(dir, "Day-$targetSlot.json")
+        val json = exportBackupJson(context, notes, tags)
+        file.writeText(json)
+
+        return Triple(targetSlot, todayStr, file.absolutePath)
     }
 
     fun writeRotatingBackupSlot(

@@ -19,12 +19,21 @@ object ShareAppHelper {
     const val DOWNLOAD_LINK = "https://ais-pre-5477vnh3ftauoratbxkang-468255947282.asia-southeast1.run.app"
 
     val SHARE_TEXT = """
-My Notes — a simple, secure notes app. Create rich-text notes and checklists, lock notes with a password, back up automatically to Google Drive, and access your notes offline. Try it out!
+📌 My Notes — Simple, Secure Note Taking & Checklist App
+• Rich text editing with custom bullet lists, colors, and formatting
+• Interactive checklists combined with free-form paragraphs
+• Voice notes player, audio recorder, and speech-to-text dictation
+• Native Biometric fingerprint/face unlock & private password-protected notes
+• Automatic 7-day rolling backups to Google Drive & local JSON storage
+• 100% offline-first with reminders and custom tags
 
-How to use:
-Download the APK, install it, and start taking notes — no account required.
+💡 How to Use:
+1. Download the app or open the link below.
+2. Tap '+' to create notes, checklists, or record audio memos.
+3. Customize colors, add reminders, and organize with tags.
+4. All data is saved securely on your device with zero setup!
 
-Download APK:
+📲 Download APK / Web App:
 $DOWNLOAD_LINK
     """.trimIndent()
 

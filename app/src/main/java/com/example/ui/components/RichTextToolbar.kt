@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -102,8 +103,8 @@ fun RichTextToolbar(
     onApplyAlignment: (TextAlignmentPreset) -> Unit,
     onApplyHighlight: (hex: String) -> Unit,
     onApplyTextColor: (hex: String) -> Unit,
-    onInsertBulletList: () -> Unit,
-    onInsertNumberedList: () -> Unit,
+    onInsertBulletList: (marker: String) -> Unit = {},
+    onInsertNumberedList: (prefix: String) -> Unit = {},
     onStartSpeechToText: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -111,6 +112,8 @@ fun RichTextToolbar(
     var showColorMenu by remember { mutableStateOf(false) }
     var showSizeMenu by remember { mutableStateOf(false) }
     var showAlignMenu by remember { mutableStateOf(false) }
+    var showBulletMenu by remember { mutableStateOf(false) }
+    var showNumberedMenu by remember { mutableStateOf(false) }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -386,30 +389,258 @@ fun RichTextToolbar(
                 }
             }
 
-            // 12. Bullet List
-            IconButton(
-                onClick = onInsertBulletList,
-                modifier = Modifier.testTag("toolbar_bullet")
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.List,
-                    contentDescription = "Bullet list",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
-                )
+            // 12. Bullet List with Style Picker
+            Box {
+                IconButton(
+                    onClick = { showBulletMenu = true },
+                    modifier = Modifier.testTag("toolbar_bullet")
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.List,
+                        contentDescription = "Bullet list styles",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = showBulletMenu,
+                    onDismissRequest = { showBulletMenu = false },
+                    modifier = Modifier.heightIn(max = 280.dp)
+                ) {
+                    Text(
+                        text = "Bullet List Style",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("•", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Round ( • )") },
+                        onClick = {
+                            onInsertBulletList("•")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("✓", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Checkmark ( ✓ )") },
+                        onClick = {
+                            onInsertBulletList("✓")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("->", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Arrow with line ( -> )") },
+                        onClick = {
+                            onInsertBulletList("->")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("➔", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Right Arrow ( ➔ )") },
+                        onClick = {
+                            onInsertBulletList("➔")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("◄", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Left Arrow ( ◄ )") },
+                        onClick = {
+                            onInsertBulletList("◄")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("⇨", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Outlined Arrow ( ⇨ )") },
+                        onClick = {
+                            onInsertBulletList("⇨")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("⮞", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Chevron Arrow ( ⮞ )") },
+                        onClick = {
+                            onInsertBulletList("⮞")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("⤢", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("4-Way Arrows ( ⤢ )") },
+                        onClick = {
+                            onInsertBulletList("⤢")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("❏", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Unique 3D Box ( ❏ )") },
+                        onClick = {
+                            onInsertBulletList("❏")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("▣", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("3D Framed Box ( ▣ )") },
+                        onClick = {
+                            onInsertBulletList("▣")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("▪", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Square ( ▪ )") },
+                        onClick = {
+                            onInsertBulletList("▪")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("◆", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Solid Diamond ( ◆ )") },
+                        onClick = {
+                            onInsertBulletList("◆")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("◈", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Diamond Target ( ◈ )") },
+                        onClick = {
+                            onInsertBulletList("◈")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("✣", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Diamond Cluster ( ✣ )") },
+                        onClick = {
+                            onInsertBulletList("✣")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("❖", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Floral Cross ( ❖ )") },
+                        onClick = {
+                            onInsertBulletList("❖")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("✾", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Petal Flower ( ✾ )") },
+                        onClick = {
+                            onInsertBulletList("✾")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("✦", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Sparkle Star ( ✦ )") },
+                        onClick = {
+                            onInsertBulletList("✦")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("❂", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Radiant Sun ( ❂ )") },
+                        onClick = {
+                            onInsertBulletList("❂")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("✹", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Sunburst Star ( ✹ )") },
+                        onClick = {
+                            onInsertBulletList("✹")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("☽", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Crescent Moon ( ☽ )") },
+                        onClick = {
+                            onInsertBulletList("☽")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("○", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Open Circle ( ○ )") },
+                        onClick = {
+                            onInsertBulletList("○")
+                            showBulletMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("▲", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Pyramid Type ( ▲ )") },
+                        onClick = {
+                            onInsertBulletList("▲")
+                            showBulletMenu = false
+                        }
+                    )
+                }
             }
 
-            // 13. Numbered List
-            IconButton(
-                onClick = onInsertNumberedList,
-                modifier = Modifier.testTag("toolbar_numbered")
-            ) {
-                Icon(
-                    Icons.Default.FormatListNumbered,
-                    contentDescription = "Numbered list",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
-                )
+            // 13. Numbered List with Style Picker
+            Box {
+                IconButton(
+                    onClick = { showNumberedMenu = true },
+                    modifier = Modifier.testTag("toolbar_numbered")
+                ) {
+                    Icon(
+                        Icons.Default.FormatListNumbered,
+                        contentDescription = "Numbered list styles",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = showNumberedMenu,
+                    onDismissRequest = { showNumberedMenu = false },
+                    modifier = Modifier.heightIn(max = 280.dp)
+                ) {
+                    Text(
+                        text = "Numbered List Style",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("1.", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Numbers ( 1, 2, 3... )") },
+                        onClick = {
+                            onInsertNumberedList("1.")
+                            showNumberedMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("a.", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Letters ( a, b, c... )") },
+                        onClick = {
+                            onInsertNumberedList("a.")
+                            showNumberedMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Text("i.", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)) },
+                        text = { Text("Roman ( i, ii, iii... )") },
+                        onClick = {
+                            onInsertNumberedList("i.")
+                            showNumberedMenu = false
+                        }
+                    )
+                }
             }
 
             ToolbarDivider()

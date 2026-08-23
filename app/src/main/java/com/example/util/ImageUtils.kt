@@ -45,4 +45,30 @@ object ImageUtils {
             if (file.exists()) file.delete()
         }
     }
+
+    fun shareSingleImage(context: Context, filePath: String) {
+        try {
+            val file = File(filePath)
+            if (!file.exists()) {
+                android.widget.Toast.makeText(context, "Image file not found", android.widget.Toast.LENGTH_SHORT).show()
+                return
+            }
+            val contentUri = androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.provider",
+                file
+            )
+            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "image/jpeg"
+                putExtra(android.content.Intent.EXTRA_STREAM, contentUri)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val chooser = android.content.Intent.createChooser(shareIntent, "Share Image via").apply {
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(chooser)
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(context, "Error sharing image: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
 }

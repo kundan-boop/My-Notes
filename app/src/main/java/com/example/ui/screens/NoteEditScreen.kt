@@ -5,6 +5,7 @@ import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,6 +24,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -55,6 +58,7 @@ import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -143,6 +147,8 @@ fun NoteEditScreen(
     val richEditorState = rememberNativeRichTextEditorState("")
     var type by remember { mutableStateOf("text") } // "text", "checklist", "voice"
     var checklistItems by remember { mutableStateOf<List<ChecklistItem>>(emptyList()) }
+    var showChecklistSection by remember { mutableStateOf(false) }
+    var selectedImageForDialog by remember { mutableStateOf<String?>(null) }
     var colorHex by remember { mutableStateOf("default") }
     var tagNames by remember { mutableStateOf<List<String>>(emptyList()) }
     var isPinned by remember { mutableStateOf(false) }
@@ -195,6 +201,58 @@ fun NoteEditScreen(
         }
     }
 
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ -> }
+
+    fun promptReminderPicker() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val perm = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+            if (perm != PackageManager.PERMISSION_GRANTED) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+        val calendar = Calendar.getInstance()
+        DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                calendar.set(Calendar.YEAR, year)
+                calendar.set(Calendar.MONTH, month)
+                calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
+
+                TimePickerDialog(
+                    context,
+                    { _, hourOfDay, minute ->
+                        calendar.set(Calendar.HOUR_OF_DAY, hourOfDay)
+                        calendar.set(Calendar.MINUTE, minute)
+                        calendar.set(Calendar.SECOND, 0)
+                        val scheduledTime = calendar.timeInMillis
+                        reminderAt = scheduledTime
+                        val curNote = note
+                        if (curNote != null) {
+                            val updatedForReminder = curNote.copy(
+                                title = title,
+                                content = richEditorState.html,
+                                type = type,
+                                checklistJson = Converters.checklistToJson(checklistItems),
+                                colorHex = colorHex,
+                                tagsJson = Converters.stringListToJson(tagNames),
+                                reminderAt = scheduledTime
+                            )
+                            viewModel.setReminder(context, updatedForReminder, scheduledTime)
+                        }
+                    },
+                    calendar.get(Calendar.HOUR_OF_DAY),
+                    calendar.get(Calendar.MINUTE),
+                    true
+                ).show()
+            },
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
     fun startDictation() {
         if (isListeningSpeech) {
             speechToTextManager?.stopListening()
@@ -218,6 +276,9 @@ fun NoteEditScreen(
             )
             note = newNote
             type = defaultType
+            if (defaultType == "checklist") {
+                showChecklistSection = true
+            }
             if (defaultType == "voice") {
                 val voiceFile = viewModel.audioRecorder.startRecording()
                 if (voiceFile != null) {
@@ -231,7 +292,11 @@ fun NoteEditScreen(
                 title = existing.title
                 richEditorState.setHtmlContent(existing.content)
                 type = existing.type
-                checklistItems = Converters.jsonToChecklist(existing.checklistJson)
+                val items = Converters.jsonToChecklist(existing.checklistJson)
+                checklistItems = items
+                if (items.isNotEmpty() || existing.type == "checklist") {
+                    showChecklistSection = true
+                }
                 colorHex = existing.colorHex
                 tagNames = Converters.jsonToStringList(existing.tagsJson)
                 isPinned = existing.isPinned
@@ -446,45 +511,7 @@ fun NoteEditScreen(
                                 text = { Text("Set Reminder") },
                                 onClick = {
                                     showTopMenu = false
-                                    val calendar = Calendar.getInstance()
-                                    DatePickerDialog(
-                                        context,
-                                        { _, year, month, dayOfMonth ->
-                                            calendar.set(Calendar.YEAR, year)
-                                            calendar.set(Calendar.MONTH, month)
-                                            calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
-
-                                            TimePickerDialog(
-                                                context,
-                                                { _, hourOfDay, minute ->
-                                                    calendar.set(Calendar.HOUR_OF_DAY, hourOfDay)
-                                                    calendar.set(Calendar.MINUTE, minute)
-                                                    calendar.set(Calendar.SECOND, 0)
-                                                    val scheduledTime = calendar.timeInMillis
-                                                    reminderAt = scheduledTime
-                                                    val curNote = note
-                                                    if (curNote != null) {
-                                                        val updatedForReminder = curNote.copy(
-                                                            title = title,
-                                                            content = richEditorState.html,
-                                                            type = type,
-                                                            checklistJson = Converters.checklistToJson(checklistItems),
-                                                            colorHex = colorHex,
-                                                            tagsJson = Converters.stringListToJson(tagNames),
-                                                            reminderAt = scheduledTime
-                                                        )
-                                                        viewModel.setReminder(context, updatedForReminder, scheduledTime)
-                                                    }
-                                                },
-                                                calendar.get(Calendar.HOUR_OF_DAY),
-                                                calendar.get(Calendar.MINUTE),
-                                                true
-                                            ).show()
-                                        },
-                                        calendar.get(Calendar.YEAR),
-                                        calendar.get(Calendar.MONTH),
-                                        calendar.get(Calendar.DAY_OF_MONTH)
-                                    ).show()
+                                    promptReminderPicker()
                                 }
                             )
                             DropdownMenuItem(
@@ -528,59 +555,36 @@ fun NoteEditScreen(
             )
         },
         bottomBar = {
-            RichTextToolbar(
-                isChecklistMode = (type == "checklist"),
-                activeFormats = richEditorState.activeFormats,
-                onInsertImage = { imagePickerLauncher.launch("image/*") },
-                onToggleChecklistMode = { type = if (type == "checklist") "text" else "checklist" },
-                onOpenReminder = {
-                    val calendar = Calendar.getInstance()
-                    DatePickerDialog(
-                        context,
-                        { _, year, month, dayOfMonth ->
-                            calendar.set(Calendar.YEAR, year)
-                            calendar.set(Calendar.MONTH, month)
-                            calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
-
-                            TimePickerDialog(
-                                context,
-                                { _, hourOfDay, minute ->
-                                    calendar.set(Calendar.HOUR_OF_DAY, hourOfDay)
-                                    calendar.set(Calendar.MINUTE, minute)
-                                    calendar.set(Calendar.SECOND, 0)
-                                    val scheduledTime = calendar.timeInMillis
-                                    reminderAt = scheduledTime
-                                    val curNote = note
-                                    if (curNote != null) {
-                                        viewModel.setReminder(context, curNote, scheduledTime)
-                                    }
-                                },
-                                calendar.get(Calendar.HOUR_OF_DAY),
-                                calendar.get(Calendar.MINUTE),
-                                true
-                            ).show()
-                        },
-                        calendar.get(Calendar.YEAR),
-                        calendar.get(Calendar.MONTH),
-                        calendar.get(Calendar.DAY_OF_MONTH)
-                    ).show()
-                },
-                onToggleBold = { richEditorState.toggleBold() },
-                onToggleItalic = { richEditorState.toggleItalic() },
-                onToggleUnderline = { richEditorState.toggleUnderline() },
-                onToggleStrikethrough = { richEditorState.toggleStrikethrough() },
-                onApplyFontSize = { preset -> richEditorState.setFontSize(preset) },
-                onApplyAlignment = { alignment -> richEditorState.setAlignment(alignment) },
-                onApplyHighlight = { hex -> richEditorState.setHighlight(hex) },
-                onApplyTextColor = { hex -> richEditorState.setTextColor(hex) },
-                onInsertBulletList = { richEditorState.toggleBulletList() },
-                onInsertNumberedList = { richEditorState.toggleNumberedList() },
-                onStartSpeechToText = { startDictation() },
+            Box(
                 modifier = Modifier
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                    .padding(bottom = 25.dp)
-                    .testTag("rich_text_toolbar")
-            )
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .padding(horizontal = 8.dp)
+                    .padding(top = 4.dp, bottom = 20.dp)
+            ) {
+                RichTextToolbar(
+                    isChecklistMode = showChecklistSection,
+                    activeFormats = richEditorState.activeFormats,
+                    onInsertImage = { imagePickerLauncher.launch("image/*") },
+                    onToggleChecklistMode = { showChecklistSection = !showChecklistSection },
+                    onOpenReminder = { promptReminderPicker() },
+                    onToggleBold = { richEditorState.toggleBold() },
+                    onToggleItalic = { richEditorState.toggleItalic() },
+                    onToggleUnderline = { richEditorState.toggleUnderline() },
+                    onToggleStrikethrough = { richEditorState.toggleStrikethrough() },
+                    onApplyFontSize = { preset -> richEditorState.setFontSize(preset) },
+                    onApplyAlignment = { alignment -> richEditorState.setAlignment(alignment) },
+                    onApplyHighlight = { hex -> richEditorState.setHighlight(hex) },
+                    onApplyTextColor = { hex -> richEditorState.setTextColor(hex) },
+                    onInsertBulletList = { marker -> richEditorState.toggleBulletList(marker) },
+                    onInsertNumberedList = { prefix -> richEditorState.toggleNumberedList(prefix) },
+                    onStartSpeechToText = { startDictation() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("rich_text_toolbar")
+                )
+            }
         }
     ) { innerPadding ->
         Column(
@@ -731,7 +735,7 @@ fun NoteEditScreen(
                     }
                 }
 
-                // Attachments Carousel
+                // Attachments Carousel (with single image share & action dialog)
                 if (attachmentPaths.isNotEmpty()) {
                     item {
                         Spacer(Modifier.height(8.dp))
@@ -742,19 +746,25 @@ fun NoteEditScreen(
                             items(attachmentPaths) { path ->
                                 val file = File(path)
                                 if (file.exists()) {
-                                    Box(modifier = Modifier.size(100.dp, 100.dp)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(100.dp, 100.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable {
+                                                selectedImageForDialog = path
+                                            }
+                                    ) {
                                         AsyncImage(
                                             model = ImageRequest.Builder(context)
                                                 .data(file)
                                                 .crossfade(true)
                                                 .build(),
-                                            contentDescription = "Attachment",
+                                            contentDescription = "Attachment. Tap for options or share.",
                                             contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .clip(RoundedCornerShape(12.dp))
+                                            modifier = Modifier.fillMaxSize()
                                         )
 
+                                        // Delete Image Button (Top Right)
                                         IconButton(
                                             onClick = {
                                                 attachmentPaths = attachmentPaths - path
@@ -763,14 +773,34 @@ fun NoteEditScreen(
                                             modifier = Modifier
                                                 .align(Alignment.TopEnd)
                                                 .padding(4.dp)
-                                                .size(24.dp)
+                                                .size(26.dp)
                                                 .clip(CircleShape)
-                                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f))
+                                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
                                         ) {
                                             Icon(
                                                 Icons.Default.Close,
                                                 contentDescription = "Remove image",
                                                 tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+
+                                        // Quick Single Image Share Button (Bottom Right)
+                                        IconButton(
+                                            onClick = {
+                                                ImageUtils.shareSingleImage(context, path)
+                                            },
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .padding(4.dp)
+                                                .size(26.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f))
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Share,
+                                                contentDescription = "Share this image",
+                                                tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(14.dp)
                                             )
                                         }
@@ -848,25 +878,64 @@ fun NoteEditScreen(
                     }
                 }
 
-                // Body Content OR Checklist Mode
-                if (type == "checklist") {
+                // Regular Note Body Native Rich Text Editor (Always available for rich paragraphs, styling, bullet lists)
+                item {
+                    Spacer(Modifier.height(4.dp))
+                    NativeRichTextEditor(
+                        state = richEditorState,
+                        textColor = textColor,
+                        placeholder = "Note content...",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("note_content_input")
+                    )
+                }
+
+                // Interactive Checklist Section (Coexists with rich text body seamlessly)
+                if (showChecklistSection || checklistItems.isNotEmpty()) {
                     item {
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        Spacer(Modifier.height(16.dp))
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(
-                                "Checklist Items",
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                color = textColor.copy(alpha = 0.7f)
-                            )
-                            TextButton(onClick = { type = "text" }) {
-                                Text("Switch to Text")
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val completedCount = checklistItems.count { it.isChecked }
+                                val totalCount = checklistItems.size
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.CheckBox,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        if (totalCount > 0) "Checklist ($completedCount/$totalCount)" else "Checklist",
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = textColor
+                                    )
+                                }
+
+                                if (checklistItems.isNotEmpty()) {
+                                    TextButton(
+                                        onClick = {
+                                            checklistItems = checklistItems.filter { !it.isChecked }
+                                        }
+                                    ) {
+                                        Text("Clear Checked", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
                             }
                         }
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(6.dp))
                     }
 
                     items(checklistItems, key = { it.id }) { item ->
@@ -932,7 +1001,7 @@ fun NoteEditScreen(
                             OutlinedTextField(
                                 value = newChecklistText,
                                 onValueChange = { newChecklistText = it },
-                                placeholder = { Text("List item", color = textColor.copy(alpha = 0.5f)) },
+                                placeholder = { Text("Add checklist item...", color = textColor.copy(alpha = 0.5f)) },
                                 singleLine = true,
                                 modifier = Modifier
                                     .weight(1f)
@@ -956,19 +1025,6 @@ fun NoteEditScreen(
                                 }
                             }
                         }
-                    }
-                } else {
-                    // Regular Note Body Native Rich Text Editor (100% Native Spannable Android Engine)
-                    item {
-                        Spacer(Modifier.height(4.dp))
-                        NativeRichTextEditor(
-                            state = richEditorState,
-                            textColor = textColor,
-                            placeholder = "Note content...",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("note_content_input")
-                        )
                     }
                 }
 
@@ -1078,6 +1134,57 @@ fun NoteEditScreen(
                 dismissButton = {
                     TextButton(onClick = { showDeleteConfirmDialog = false }) {
                         Text("Cancel")
+                    }
+                }
+            )
+        }
+        // Image Detail & Share Dialog (Requirement 5b)
+        selectedImageForDialog?.let { imagePath ->
+            val imgFile = File(imagePath)
+            AlertDialog(
+                onDismissRequest = { selectedImageForDialog = null },
+                title = { Text("Image Attachment") },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (imgFile.exists()) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(context)
+                                    .data(imgFile)
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = "Image preview",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(240.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                            )
+                        }
+                        Text(
+                            "Share this individual image to WhatsApp or any other app:",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            ImageUtils.shareSingleImage(context, imagePath)
+                            selectedImageForDialog = null
+                        }
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Share Image")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { selectedImageForDialog = null }) {
+                        Text("Close")
                     }
                 }
             )

@@ -14,15 +14,64 @@ import androidx.core.text.HtmlCompat
 object RichTextRenderer {
 
     /**
-     * Strips all HTML tags and Markdown markers to return clean, readable plain text.
+     * Strips all HTML tags and decodes HTML entities to return clean, readable plain text.
      */
     fun stripHtml(html: String): String {
         if (html.isBlank()) return ""
+        val decoded = decodeHtmlEntities(html)
         return try {
-            HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_COMPACT).toString().trim()
+            HtmlCompat.fromHtml(decoded, HtmlCompat.FROM_HTML_MODE_COMPACT)
+                .toString()
+                .replace(Regex("\n{2,}"), "\n")
+                .trim()
         } catch (e: Exception) {
-            html.replace(Regex("<[^>]+>"), "").trim()
+            decoded.replace(Regex("<[^>]+>"), "").replace(Regex("\n{2,}"), "\n").trim()
         }
+    }
+
+    /**
+     * Decodes common named HTML entities and all numeric decimal (&#8226;) and hex (&#x2022;) entities.
+     */
+    fun decodeHtmlEntities(text: String): String {
+        if (!text.contains("&")) return text
+        var decoded = text
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace("&apos;", "'")
+            .replace("&nbsp;", " ")
+            .replace("&bull;", "•")
+            .replace("&check;", "✓")
+            .replace("&rarr;", "➔")
+            .replace("&larr;", "◄")
+
+        // Replace numeric decimal entities like &#8226; or &#10003;
+        if (decoded.contains("&#")) {
+            decoded = Regex("&#([0-9]+);").replace(decoded) { match ->
+                val code = match.groupValues[1].toIntOrNull()
+                if (code != null && code in 1..0x10FFFF) {
+                    try {
+                        Character.toChars(code).concatToString()
+                    } catch (e: Exception) {
+                        match.value
+                    }
+                } else match.value
+            }
+            // Replace numeric hex entities like &#x2022;
+            decoded = Regex("&#x([0-9a-fA-F]+);").replace(decoded) { match ->
+                val code = match.groupValues[1].toIntOrNull(16)
+                if (code != null && code in 1..0x10FFFF) {
+                    try {
+                        Character.toChars(code).concatToString()
+                    } catch (e: Exception) {
+                        match.value
+                    }
+                } else match.value
+            }
+        }
+        return decoded
     }
 
     /**
@@ -32,15 +81,17 @@ object RichTextRenderer {
     fun parseRichText(content: String, defaultColor: Color = Color.Unspecified): AnnotatedString {
         if (content.isBlank()) return AnnotatedString("")
 
-        // Fast path for simple plain text
-        if (!content.contains("<") && !content.contains("*") && !content.contains("~~") && !content.contains("==")) {
-            return AnnotatedString(content)
+        val cleanContent = decodeHtmlEntities(content)
+
+        // Fast path for simple plain text with no tags or entities
+        if (!cleanContent.contains("<") && !cleanContent.contains("&")) {
+            return AnnotatedString(cleanContent.trim())
         }
 
         return try {
-            buildRichAnnotatedString(content, defaultColor)
+            buildRichAnnotatedString(cleanContent, defaultColor)
         } catch (e: Exception) {
-            AnnotatedString(stripHtml(content))
+            AnnotatedString(stripHtml(cleanContent))
         }
     }
 
@@ -84,6 +135,12 @@ object RichTextRenderer {
 
             fun currentStyle(): StyleState = styleStack.last()
 
+            fun ensureNewline() {
+                if (length > 0 && this.toAnnotatedString().text.last() != '\n') {
+                    append("\n")
+                }
+            }
+
             while (i < len) {
                 // Check HTML tags
                 if (input[i] == '<') {
@@ -94,30 +151,38 @@ object RichTextRenderer {
 
                         // Handle line breaks
                         if (tagLower == "<br>" || tagLower == "<br/>" || tagLower == "<br />") {
-                            append("\n")
+                            ensureNewline()
                             i = tagEnd + 1
                             continue
                         }
 
-                        // Handle list items
-                        if (tagLower == "<li>") {
+                        // Handle opening list items
+                        if (tagLower.startsWith("<li")) {
+                            ensureNewline()
                             append("• ")
                             i = tagEnd + 1
                             continue
                         }
 
-                        if (tagLower == "</li>" || tagLower == "</ul>" || tagLower == "</ol>" || tagLower == "</div>" || tagLower == "</p>") {
-                            if (tagLower != "</div>" && tagLower != "</p>") {
-                                append("\n")
-                            }
-                            if (styleStack.size > 1 && (tagLower == "</div>" || tagLower == "</p>")) {
+                        // Handle block element closing tags
+                        if (tagLower.startsWith("</li") || tagLower.startsWith("</p") || tagLower.startsWith("</div") || tagLower.startsWith("</ul") || tagLower.startsWith("</ol")) {
+                            ensureNewline()
+                            if (styleStack.size > 1 && (tagLower.startsWith("</div") || tagLower.startsWith("</p"))) {
                                 styleStack.removeLast()
                             }
                             i = tagEnd + 1
                             continue
                         }
 
-                        // Closing tag
+                        // Opening block tags
+                        if (tagLower.startsWith("<p") || tagLower.startsWith("<div") || tagLower.startsWith("<ul") || tagLower.startsWith("<ol")) {
+                            ensureNewline()
+                            styleStack.addLast(currentStyle())
+                            i = tagEnd + 1
+                            continue
+                        }
+
+                        // Closing inline tag
                         if (tagLower.startsWith("</")) {
                             if (styleStack.size > 1) {
                                 styleStack.removeLast()
@@ -126,7 +191,7 @@ object RichTextRenderer {
                             continue
                         }
 
-                        // Opening tags
+                        // Opening formatting tags
                         var newStyle = currentStyle()
                         var isRecognized = false
 
@@ -182,10 +247,6 @@ object RichTextRenderer {
                                 }
                             }
                             newStyle = spanStyle
-                            isRecognized = true
-                        } else if (tagLower.startsWith("<div") || tagLower.startsWith("<p")) {
-                            isRecognized = true
-                        } else if (tagLower.startsWith("<ul") || tagLower.startsWith("<ol")) {
                             isRecognized = true
                         }
 

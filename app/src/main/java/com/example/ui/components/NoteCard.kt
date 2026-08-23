@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
@@ -82,6 +84,8 @@ fun NoteCard(
     onToggleArchive: () -> Unit,
     onMoveToTrash: () -> Unit,
     onColorPickRequest: () -> Unit,
+    onMovePinnedLeft: (() -> Unit)? = null,
+    onMovePinnedRight: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var showMenu by remember { mutableStateOf(false) }
@@ -173,6 +177,34 @@ fun NoteCard(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (note.isPinned && onMovePinnedLeft != null) {
+                        IconButton(
+                            onClick = onMovePinnedLeft,
+                            modifier = Modifier.size(28.dp).testTag("move_pinned_left_${note.id}")
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Move Pinned Left",
+                                tint = textColor.copy(alpha = 0.7f),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+
+                    if (note.isPinned && onMovePinnedRight != null) {
+                        IconButton(
+                            onClick = onMovePinnedRight,
+                            modifier = Modifier.size(28.dp).testTag("move_pinned_right_${note.id}")
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = "Move Pinned Right",
+                                tint = textColor.copy(alpha = 0.7f),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+
                     IconButton(
                         onClick = onTogglePin,
                         modifier = Modifier
@@ -337,8 +369,20 @@ fun NoteCard(
                     }
                 }
 
+                // Rich Text Content Preview (Max 3 lines for compact density)
+                if (note.content.isNotBlank() && RichTextRenderer.stripHtml(note.content).isNotBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = RichTextRenderer.parseRichText(note.content, textColor),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = textColor.copy(alpha = 0.85f),
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
                 // Checklist Preview Mode (Max 2 items for compact grid density)
-                if (note.type == "checklist" && checklistItems.isNotEmpty()) {
+                if (checklistItems.isNotEmpty()) {
                     Spacer(Modifier.height(6.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         checklistItems.take(2).forEach { item ->
@@ -372,16 +416,6 @@ fun NoteCard(
                             )
                         }
                     }
-                } else if (note.content.isNotBlank()) {
-                    // Rich Text Content Preview (Max 3 lines for compact density)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = RichTextRenderer.parseRichText(note.content, textColor),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = textColor.copy(alpha = 0.85f),
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis
-                    )
                 }
             }
 

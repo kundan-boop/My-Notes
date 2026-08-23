@@ -2,7 +2,7 @@ package com.example
 
 import android.os.Bundle
 import android.widget.Toast
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -35,16 +35,18 @@ import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.NotesViewModel
 import com.example.ui.viewmodel.SettingsViewModel
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
     private val notesViewModel: NotesViewModel by viewModels()
     private val settingsViewModel: SettingsViewModel by viewModels()
+    private val requestedNoteId = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val openNoteId = intent.getStringExtra("OPEN_NOTE_ID")
+        val openNoteId = intent?.getStringExtra("OPEN_NOTE_ID")
+        requestedNoteId.value = openNoteId
 
         setContent {
             val themeMode by settingsViewModel.themeMode.collectAsState()
@@ -73,12 +75,28 @@ class MainActivity : ComponentActivity() {
                         MainAppNavigation(
                             notesViewModel = notesViewModel,
                             settingsViewModel = settingsViewModel,
-                            initialNoteId = openNoteId
+                            requestedNoteIdFlow = requestedNoteId,
+                            onNoteNavigated = { requestedNoteId.value = null }
                         )
                     }
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val noteId = intent.getStringExtra("OPEN_NOTE_ID")
+        if (!noteId.isNullOrBlank()) {
+            requestedNoteId.value = noteId
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Automatically backup to Google Drive folder on app close/background if any data changed
+        notesViewModel.performAutoBackupIfDirty()
     }
 }
 
@@ -86,9 +104,11 @@ class MainActivity : ComponentActivity() {
 fun MainAppNavigation(
     notesViewModel: NotesViewModel,
     settingsViewModel: SettingsViewModel,
-    initialNoteId: String?
+    requestedNoteIdFlow: kotlinx.coroutines.flow.StateFlow<String?>,
+    onNoteNavigated: () -> Unit
 ) {
     val navController = rememberNavController()
+    val targetNoteId by requestedNoteIdFlow.collectAsState()
 
     val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(Unit) {
@@ -97,11 +117,17 @@ fun MainAppNavigation(
         }
     }
 
-    val startDestination = if (!initialNoteId.isNullOrBlank()) {
-        Screen.NoteEdit.createRoute(initialNoteId)
-    } else {
-        Screen.NotesList.route
+    LaunchedEffect(targetNoteId) {
+        val noteId = targetNoteId
+        if (!noteId.isNullOrBlank()) {
+            navController.navigate(Screen.NoteEdit.createRoute(noteId)) {
+                launchSingleTop = true
+            }
+            onNoteNavigated()
+        }
     }
+
+    val startDestination = Screen.NotesList.route
 
     NavHost(
         navController = navController,

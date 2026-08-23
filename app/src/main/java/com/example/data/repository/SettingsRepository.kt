@@ -29,6 +29,7 @@ class SettingsRepository(private val context: Context) {
         val KEY_SECURITY_QUESTION = stringPreferencesKey("security_question")
         val KEY_SECURITY_ANSWER = stringPreferencesKey("security_answer")
         val KEY_PROTECTED_NOTES_PASSWORD = stringPreferencesKey("protected_notes_password")
+        val KEY_PINNED_ORDER = stringPreferencesKey("pinned_order")
 
         // User Profile
         val KEY_USER_NAME = stringPreferencesKey("user_name")
@@ -39,9 +40,27 @@ class SettingsRepository(private val context: Context) {
         val KEY_LAST_BACKUP_TIME = longPreferencesKey("last_backup_time")
         val KEY_DRIVE_FOLDER_NAME = stringPreferencesKey("drive_folder_name")
         val KEY_DRIVE_FOLDER_URI = stringPreferencesKey("drive_folder_uri")
+        val KEY_DRIVE_FOLDER_SELECTED = booleanPreferencesKey("drive_folder_selected")
         val KEY_AUTO_BACKUP_ENABLED = booleanPreferencesKey("auto_backup_enabled")
         val KEY_LAST_ROTATING_SLOT = intPreferencesKey("last_rotating_slot")
+        val KEY_LAST_BACKUP_DATE_STRING = stringPreferencesKey("last_backup_date_string")
+        val KEY_IS_DATA_DIRTY = booleanPreferencesKey("is_data_dirty")
         val KEY_SCHEMA_VERSION = intPreferencesKey("schema_version")
+
+        @Volatile
+        var isDirtyInMemory: Boolean = false
+    }
+
+    val isDataDirty: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_IS_DATA_DIRTY] ?: isDirtyInMemory
+    }
+
+    val driveFolderSelected: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_DRIVE_FOLDER_SELECTED] ?: false
+    }
+
+    val lastBackupDateString: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_LAST_BACKUP_DATE_STRING] ?: ""
     }
 
     val viewMode: Flow<String> = context.dataStore.data.map { prefs ->
@@ -82,6 +101,11 @@ class SettingsRepository(private val context: Context) {
 
     val protectedNotesPassword: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[KEY_PROTECTED_NOTES_PASSWORD] ?: (prefs[KEY_APP_LOCK_PIN] ?: "1234")
+    }
+
+    val pinnedOrder: Flow<List<String>> = context.dataStore.data.map { prefs ->
+        val raw = prefs[KEY_PINNED_ORDER] ?: ""
+        if (raw.isBlank()) emptyList() else raw.split(",").filter { it.isNotBlank() }
     }
 
     val userName: Flow<String> = context.dataStore.data.map { prefs ->
@@ -192,7 +216,30 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { prefs -> prefs[KEY_AUTO_BACKUP_ENABLED] = enabled }
     }
 
+    suspend fun setDriveFolderSelected(selected: Boolean) {
+        context.dataStore.edit { prefs -> prefs[KEY_DRIVE_FOLDER_SELECTED] = selected }
+    }
+
+    suspend fun setLastBackupDateString(dateStr: String) {
+        context.dataStore.edit { prefs -> prefs[KEY_LAST_BACKUP_DATE_STRING] = dateStr }
+    }
+
+    suspend fun setDataDirty(isDirty: Boolean) {
+        isDirtyInMemory = isDirty
+        context.dataStore.edit { prefs -> prefs[KEY_IS_DATA_DIRTY] = isDirty }
+    }
+
+    fun markDataDirtyFast() {
+        isDirtyInMemory = true
+    }
+
     suspend fun setLastRotatingSlot(slot: Int) {
         context.dataStore.edit { prefs -> prefs[KEY_LAST_ROTATING_SLOT] = slot }
+    }
+
+    suspend fun setPinnedOrder(orderedIds: List<String>) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_PINNED_ORDER] = orderedIds.joinToString(",")
+        }
     }
 }

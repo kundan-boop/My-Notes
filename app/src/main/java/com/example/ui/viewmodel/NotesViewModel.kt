@@ -26,7 +26,9 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -34,8 +36,26 @@ import java.util.UUID
 class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = AppDatabase.getDatabase(application)
-    val repository = NotesRepository(db.noteDao(), db.tagDao())
     val settingsRepository = SettingsRepository(application)
+    val repository = NotesRepository(db.noteDao(), db.tagDao(), settingsRepository)
+
+    val isDataDirty: StateFlow<Boolean> = settingsRepository.isDataDirty.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = false
+    )
+
+    val driveFolderSelected: StateFlow<Boolean> = settingsRepository.driveFolderSelected.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = false
+    )
+
+    val lastBackupDateString: StateFlow<String> = settingsRepository.lastBackupDateString.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = ""
+    )
 
     val audioRecorder = AudioRecorder(application)
     val audioPlayer = AudioPlayer(application)
@@ -59,6 +79,12 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         initialValue = emptyList()
     )
 
+    val pinnedOrder: StateFlow<List<List<String>>> = settingsRepository.pinnedOrder.map { listOf(it) }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
     // Filtered Active Notes
     @OptIn(FlowPreview::class)
     val activeNotes: StateFlow<List<NoteEntity>> = combine(
@@ -76,19 +102,36 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             repository.activeNotes
         }
     }.combine(
-        combine(selectedTagFilter, selectedColorFilter, selectedTypeFilter, sortOrder) { t, c, ty, s -> Quad(t, c, ty, s) }
+        combine(selectedTagFilter, selectedColorFilter, selectedTypeFilter, sortOrder, settingsRepository.pinnedOrder) { t, c, ty, s, po ->
+            ActiveNoteFilters(t, c, ty, s, po)
+        }
     ) { notes, filters ->
         val filtered = notes.filter { note ->
-            val matchesTag = filters.first == null || Converters.jsonToStringList(note.tagsJson).contains(filters.first)
-            val matchesColor = filters.second == null || note.colorHex == filters.second
-            val matchesType = filters.third == null || note.type == filters.third
+            val matchesTag = filters.tag == null || Converters.jsonToStringList(note.tagsJson).contains(filters.tag)
+            val matchesColor = filters.color == null || note.colorHex == filters.color
+            val matchesType = filters.type == null || note.type == filters.type
             matchesTag && matchesColor && matchesType
         }
-        when (filters.fourth) {
-            "created" -> filtered.sortedWith(compareByDescending<NoteEntity> { it.isPinned }.thenByDescending { it.createdAt })
-            "alphabetical" -> filtered.sortedWith(compareByDescending<NoteEntity> { it.isPinned }.thenBy { it.title.lowercase() })
-            else -> filtered.sortedWith(compareByDescending<NoteEntity> { it.isPinned }.thenByDescending { it.updatedAt })
+
+        val pinnedIds = filters.pinnedOrder
+
+        val pinned = filtered.filter { it.isPinned }.sortedWith { a, b ->
+            val idxA = pinnedIds.indexOf(a.id)
+            val idxB = pinnedIds.indexOf(b.id)
+            val posA = if (idxA != -1) idxA else Int.MAX_VALUE
+            val posB = if (idxB != -1) idxB else Int.MAX_VALUE
+            if (posA != posB) posA.compareTo(posB) else b.updatedAt.compareTo(a.updatedAt)
         }
+
+        val others = filtered.filter { !it.isPinned }.let { unpinnedList ->
+            when (filters.sort) {
+                "created" -> unpinnedList.sortedByDescending { it.createdAt }
+                "alphabetical" -> unpinnedList.sortedBy { it.title.lowercase() }
+                else -> unpinnedList.sortedByDescending { it.updatedAt }
+            }
+        }
+
+        pinned + others
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -152,21 +195,42 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             val autoEnabled = settingsRepository.autoBackupEnabled.stateIn(viewModelScope).value
             if (!autoEnabled) return@launch
 
-            val lastTime = settingsRepository.lastBackupTime.stateIn(viewModelScope).value
-            val now = System.currentTimeMillis()
-            val calLast = java.util.Calendar.getInstance().apply { timeInMillis = lastTime }
-            val calNow = java.util.Calendar.getInstance().apply { timeInMillis = now }
+            val lastDateStr = settingsRepository.lastBackupDateString.stateIn(viewModelScope).value
+            val todayDateStr = BackupManager.getTodayDateString()
+            val isDataDirty = settingsRepository.isDataDirty.stateIn(viewModelScope).value || SettingsRepository.isDirtyInMemory
 
-            val isDifferentDay = (lastTime == 0L) ||
-                    (calLast.get(java.util.Calendar.YEAR) != calNow.get(java.util.Calendar.YEAR)) ||
-                    (calLast.get(java.util.Calendar.DAY_OF_YEAR) != calNow.get(java.util.Calendar.DAY_OF_YEAR))
+            // If a new calendar day has started or data is dirty, perform rolling backup
+            if (lastDateStr != todayDateStr || isDataDirty) {
+                performRollingBackupInternal()
+            }
+        }
+    }
 
-            if (isDifferentDay) {
-                val (notes, tags) = repository.getAllDataForBackup()
-                val todaySlot = BackupManager.getTodaySlot()
-                BackupManager.writeRotatingBackupSlot(getApplication(), notes, tags, todaySlot)
-                settingsRepository.setLastRotatingSlot(todaySlot)
-                settingsRepository.updateLastBackupTime(now)
+    suspend fun performRollingBackupInternal(): Int {
+        val (notes, tags) = repository.getAllDataForBackup()
+        val lastDateStr = settingsRepository.lastBackupDateString.stateIn(viewModelScope).value
+        val lastSlot = settingsRepository.lastRotatingSlot.stateIn(viewModelScope).value
+
+        val (slot, todayStr, path) = BackupManager.performRollingBackup(
+            context = getApplication(),
+            notes = notes,
+            tags = tags,
+            lastBackupDateStr = lastDateStr,
+            lastSlot = lastSlot
+        )
+        val now = System.currentTimeMillis()
+        settingsRepository.setLastRotatingSlot(slot)
+        settingsRepository.setLastBackupDateString(todayStr)
+        settingsRepository.updateLastBackupTime(now)
+        settingsRepository.setDataDirty(false)
+        SettingsRepository.isDirtyInMemory = false
+        return slot
+    }
+
+    fun performAutoBackupIfDirty() {
+        if (SettingsRepository.isDirtyInMemory || isDataDirty.value) {
+            viewModelScope.launch {
+                performRollingBackupInternal()
             }
         }
     }
@@ -196,7 +260,35 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun togglePin(noteId: String) {
         viewModelScope.launch {
+            val note = activeNotes.value.find { it.id == noteId }
+            val currentOrder = settingsRepository.pinnedOrder.first().toMutableList()
+            if (note != null && !note.isPinned) {
+                // Pinning: Append to end (right side) of pinned list
+                if (!currentOrder.contains(noteId)) {
+                    currentOrder.add(noteId)
+                    settingsRepository.setPinnedOrder(currentOrder)
+                }
+            } else if (note != null && note.isPinned) {
+                // Unpinning: Remove from pinned list
+                currentOrder.remove(noteId)
+                settingsRepository.setPinnedOrder(currentOrder)
+            }
             repository.togglePin(noteId)
+        }
+    }
+
+    fun movePinnedNote(noteId: String, delta: Int) {
+        viewModelScope.launch {
+            val pinnedList = activeNotes.value.filter { it.isPinned }.map { it.id }.toMutableList()
+            val index = pinnedList.indexOf(noteId)
+            if (index != -1) {
+                val newIndex = index + delta
+                if (newIndex in 0 until pinnedList.size) {
+                    val item = pinnedList.removeAt(index)
+                    pinnedList.add(newIndex, item)
+                    settingsRepository.setPinnedOrder(pinnedList)
+                }
+            }
         }
     }
 
@@ -210,6 +302,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     fun moveToTrash(noteId: String) {
         viewModelScope.launch {
             repository.moveToTrash(noteId)
+            ReminderScheduler.cancelReminder(getApplication(), noteId)
             _userMessage.emit("Note moved to Trash")
         }
     }
@@ -233,6 +326,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     runCatching { java.io.File(note.audioPath).delete() }
                 }
                 repository.deletePermanently(noteId)
+                ReminderScheduler.cancelReminder(getApplication(), noteId)
                 _userMessage.emit("Note permanently deleted")
             }
         }
@@ -301,14 +395,20 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun runDailyRotatingBackup(targetSlot: Int? = null) {
         viewModelScope.launch {
-            val (notes, tags) = repository.getAllDataForBackup()
-            val slotToUse = targetSlot ?: BackupManager.getTodaySlot()
-            val (slot, path) = BackupManager.writeRotatingBackupSlot(getApplication(), notes, tags, slotToUse)
-            settingsRepository.setLastRotatingSlot(slot)
-            val now = System.currentTimeMillis()
-            settingsRepository.updateLastBackupTime(now)
-            val dayName = BackupManager.getSlotDayName(slot)
-            _userMessage.emit("Backup saved to Day-$slot.json ($dayName) in Google Drive folder")
+            if (targetSlot != null) {
+                val (notes, tags) = repository.getAllDataForBackup()
+                val (slot, path) = BackupManager.writeRotatingBackupSlot(getApplication(), notes, tags, targetSlot)
+                settingsRepository.setLastRotatingSlot(slot)
+                val now = System.currentTimeMillis()
+                settingsRepository.updateLastBackupTime(now)
+                settingsRepository.setLastBackupDateString(BackupManager.getTodayDateString())
+                settingsRepository.setDataDirty(false)
+                SettingsRepository.isDirtyInMemory = false
+                _userMessage.emit("Backup saved to Day-$slot.json in Google Drive folder")
+            } else {
+                val slot = performRollingBackupInternal()
+                _userMessage.emit("Backup saved to Day-$slot.json in Google Drive folder")
+            }
         }
     }
 
@@ -361,6 +461,13 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
+private data class ActiveNoteFilters(
+    val tag: String?,
+    val color: String?,
+    val type: String?,
+    val sort: String,
+    val pinnedOrder: List<String>
+)
 private data class PentaFilter<A, B, C, D, E>(val query: A, val tag: B, val color: C, val type: D, val sort: E)
 private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 private data class QuadFilter<A, B, C, D>(val query: A, val tag: B, val color: C, val type: D)

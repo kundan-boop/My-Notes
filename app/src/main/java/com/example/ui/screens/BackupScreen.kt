@@ -53,6 +53,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -83,14 +84,41 @@ fun BackupScreen(
     val lastBackupTime by settingsViewModel.lastBackupTime.collectAsState()
     val lastRotatingSlot by settingsViewModel.lastRotatingSlot.collectAsState()
     val driveFolderName by settingsViewModel.driveFolderName.collectAsState()
+    val driveFolderSelected by settingsViewModel.driveFolderSelected.collectAsState()
+    val isDataDirty by settingsViewModel.isDataDirty.collectAsState()
 
-    var slotsInfo by remember { mutableStateOf(BackupManager.getBackupSlotsInfo(context)) }
+    var slotsInfo by remember { mutableStateOf(BackupManager.getBackupSlotsInfo(context, lastRotatingSlot)) }
     var slotToRestore by remember { mutableStateOf<Int?>(null) }
-    var showDriveFolderDialog by remember { mutableStateOf(false) }
+    var showDriveFolderDialog by remember { mutableStateOf(!driveFolderSelected) }
     var customFolderNameInput by remember(driveFolderName) { mutableStateOf(driveFolderName) }
 
     fun refreshSlots() {
-        slotsInfo = BackupManager.getBackupSlotsInfo(context)
+        slotsInfo = BackupManager.getBackupSlotsInfo(context, lastRotatingSlot)
+    }
+
+    LaunchedEffect(lastBackupTime, lastRotatingSlot) {
+        refreshSlots()
+    }
+
+    // Save Document / Folder picker launcher
+    val saveDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            runCatching {
+                val jsonString = notesViewModel.exportBackupJson()
+                context.contentResolver.openOutputStream(uri)?.use { os ->
+                    os.write(jsonString.toByteArray(Charsets.UTF_8))
+                    os.flush()
+                }
+                Toast.makeText(context, "Backup successfully saved to selected folder!", Toast.LENGTH_LONG).show()
+                settingsViewModel.updateLastBackupTime(System.currentTimeMillis())
+                settingsViewModel.setDataDirty(false)
+                refreshSlots()
+            }.onFailure {
+                Toast.makeText(context, "Failed to save backup: ${it.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     // Import file launcher
@@ -130,6 +158,44 @@ fun BackupScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Folder Selection Notice Banner if not configured
+            if (!driveFolderSelected) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Google Drive Folder Required",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    "Please select a Google Drive folder to enable automatic close/background backups.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.9f)
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Button(
+                                onClick = { showDriveFolderDialog = true },
+                                modifier = Modifier.testTag("prompt_select_drive_folder_button")
+                            ) {
+                                Text("Select")
+                            }
+                        }
+                    }
+                }
+            }
+
             item {
                 Spacer(Modifier.height(4.dp))
                 // Overview Card
@@ -138,34 +204,86 @@ fun BackupScreen(
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(20.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Storage,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(40.dp)
-                        )
-                        Spacer(Modifier.width(16.dp))
-                        Column {
-                            Text(
-                                text = "7-Day Rolling Backups",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Storage,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(40.dp)
                             )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                text = if (lastBackupTime > 0) {
-                                    val sdf = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
-                                    "Last Backup: ${sdf.format(Date(lastBackupTime))}"
-                                } else {
-                                    "No backup created yet"
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                            )
+                            Spacer(Modifier.width(16.dp))
+                            Column {
+                                Text(
+                                    text = "7-Day Rolling Backup Window",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = if (lastBackupTime > 0) {
+                                        val sdf = SimpleDateFormat("MMM dd, yyyy 'at' HH:mm", Locale.getDefault())
+                                        "Last Backup: ${sdf.format(Date(lastBackupTime))}"
+                                    } else {
+                                        "No backup created yet"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(14.dp))
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Last Written Slot:",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = if (lastRotatingSlot in 1..7) "Slot #$lastRotatingSlot (Day-$lastRotatingSlot.json)" else "None",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "App Close Backup:",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (isDataDirty) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(8.dp)
+                                        ) {}
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            text = if (isDataDirty) "Changes pending backup" else "Up to date",
+                                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                            color = if (isDataDirty) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -206,8 +324,9 @@ fun BackupScreen(
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                             color = MaterialTheme.colorScheme.onSurface
                         )
+                        Spacer(Modifier.height(2.dp))
                         Text(
-                            "Daily rotating backup files (Day-1.json to Day-7.json) will be stored in this Drive folder.",
+                            "All close-triggered backups automatically overwrite that same day's file or advance to the next rolling slot in this Drive folder.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -216,7 +335,7 @@ fun BackupScreen(
             }
 
             item {
-                // 7-Day Rotating Backup Section (Requirement 10)
+                // 7-Day Rotating Backup Section
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp)
@@ -228,7 +347,7 @@ fun BackupScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                "Rotating Backup Slots",
+                                "7 Daily Rotating Slots",
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                             )
                             FilledTonalButton(
@@ -246,7 +365,7 @@ fun BackupScreen(
 
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            "The app preserves a 7-day rolling window of backups (Day-1 through Day-7). Each new day updates the next slot and Day 8 overwrites Day-1.",
+                            "Maintains at most 7 daily backup files (Day-1.json to Day-7.json). Multiple app closes on the same day overwrite the same day's file, while Day 8 overwrites the oldest slot.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -254,10 +373,11 @@ fun BackupScreen(
                         Spacer(Modifier.height(12.dp))
 
                         slotsInfo.forEach { slot ->
+                            val isLatest = slot.slotNumber == lastRotatingSlot && slot.exists
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = if (slot.slotNumber == lastRotatingSlot && slot.exists) {
-                                    MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                                color = if (isLatest) {
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
                                 } else {
                                     MaterialTheme.colorScheme.surfaceContainerHigh
                                 },
@@ -272,28 +392,44 @@ fun BackupScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                         Icon(
                                             imageVector = if (slot.exists) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
                                             contentDescription = null,
-                                            tint = if (slot.exists) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                            tint = if (isLatest) MaterialTheme.colorScheme.primary else if (slot.exists) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outline,
                                             modifier = Modifier.size(22.dp)
                                         )
                                         Spacer(Modifier.width(12.dp))
                                         Column {
-                                            Text(
-                                                text = "Day-${slot.slotNumber}.json (${slot.dayName})",
-                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
-                                            )
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = "Day-${slot.slotNumber}.json",
+                                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                                                )
+                                                if (isLatest) {
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Surface(
+                                                        shape = RoundedCornerShape(4.dp),
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    ) {
+                                                        Text(
+                                                            "LATEST",
+                                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                            color = MaterialTheme.colorScheme.onPrimary,
+                                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
                                             Text(
                                                 text = if (slot.exists) {
-                                                    val sdf = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
+                                                    val sdf = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
                                                     "${sdf.format(Date(slot.lastModified))} • ${(slot.sizeBytes / 1024).coerceAtLeast(1)} KB"
                                                 } else {
                                                     "Empty slot"
                                                 },
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.outline
+                                                color = if (isLatest) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.outline
                                             )
                                         }
                                     }
@@ -336,6 +472,20 @@ fun BackupScreen(
                         ) {
                             Button(
                                 onClick = {
+                                    val fileName = "MyNotes_Backup_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.json"
+                                    saveDocumentLauncher.launch(fileName)
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("save_downloads_button")
+                            ) {
+                                Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Save to Local")
+                            }
+
+                            OutlinedButton(
+                                onClick = {
                                     val jsonString = notesViewModel.exportBackupJson()
                                     try {
                                         val backupFile = java.io.File(context.cacheDir, "MyNotes_Backup_${System.currentTimeMillis()}.json")
@@ -364,44 +514,6 @@ fun BackupScreen(
                                 Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("Share JSON")
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    val jsonString = notesViewModel.exportBackupJson()
-                                    try {
-                                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                                            val values = android.content.ContentValues().apply {
-                                                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "MyNotes_Backup_${System.currentTimeMillis()}.json")
-                                                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/json")
-                                                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
-                                            }
-                                            val resolver = context.contentResolver
-                                            val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                                            if (uri != null) {
-                                                resolver.openOutputStream(uri)?.use { it.write(jsonString.toByteArray()) }
-                                                Toast.makeText(context, "Backup saved to Downloads!", Toast.LENGTH_LONG).show()
-                                            } else {
-                                                Toast.makeText(context, "Failed to save backup", Toast.LENGTH_SHORT).show()
-                                            }
-                                        } else {
-                                            val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
-                                            val file = java.io.File(downloadsDir, "MyNotes_Backup_${System.currentTimeMillis()}.json")
-                                            file.writeText(jsonString)
-                                            Toast.makeText(context, "Backup saved to Downloads: ${file.name}", Toast.LENGTH_LONG).show()
-                                        }
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "Error saving: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
-                                    }
-                                    refreshSlots()
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("save_downloads_button")
-                            ) {
-                                Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Save Local")
                             }
                         }
                     }
