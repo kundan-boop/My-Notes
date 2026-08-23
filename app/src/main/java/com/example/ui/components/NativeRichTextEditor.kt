@@ -327,7 +327,24 @@ class RichEditText @JvmOverloads constructor(
         val selStart = selectionStart
         val selEnd = selectionEnd
         val s = text ?: return
-        val colorInt = android.graphics.Color.parseColor(hexColor)
+
+        if (hexColor.isBlank()) {
+            if (selStart != selEnd && selStart >= 0 && selEnd <= s.length) {
+                val spans = s.getSpans(selStart, selEnd, BackgroundColorSpan::class.java)
+                spans.forEach { s.removeSpan(it) }
+                notifyHtmlChanged()
+            } else {
+                pendingHighlightColor = null
+            }
+            onSelectionChanged(selectionStart, selectionEnd)
+            return
+        }
+
+        val colorInt = try {
+            android.graphics.Color.parseColor(hexColor)
+        } catch (e: Exception) {
+            return
+        }
 
         if (selStart != selEnd && selStart >= 0 && selEnd <= s.length) {
             val spans = s.getSpans(selStart, selEnd, BackgroundColorSpan::class.java)
@@ -344,7 +361,24 @@ class RichEditText @JvmOverloads constructor(
         val selStart = selectionStart
         val selEnd = selectionEnd
         val s = text ?: return
-        val colorInt = android.graphics.Color.parseColor(hexColor)
+
+        if (hexColor.isBlank()) {
+            if (selStart != selEnd && selStart >= 0 && selEnd <= s.length) {
+                val spans = s.getSpans(selStart, selEnd, ForegroundColorSpan::class.java)
+                spans.forEach { s.removeSpan(it) }
+                notifyHtmlChanged()
+            } else {
+                pendingTextColor = null
+            }
+            onSelectionChanged(selectionStart, selectionEnd)
+            return
+        }
+
+        val colorInt = try {
+            android.graphics.Color.parseColor(hexColor)
+        } catch (e: Exception) {
+            return
+        }
 
         if (selStart != selEnd && selStart >= 0 && selEnd <= s.length) {
             val spans = s.getSpans(selStart, selEnd, ForegroundColorSpan::class.java)

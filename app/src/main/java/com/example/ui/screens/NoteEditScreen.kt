@@ -67,7 +67,11 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -573,7 +577,7 @@ fun NoteEditScreen(
                     }
                 }
 
-                // Tag Chips & Metadata Row (Compact Horizontal Scrollbar)
+                // Tag Chips & Metadata Row (Compact Material 3 Layout)
                 if (tagNames.isNotEmpty() || reminderAt != null || isProtected) {
                     item {
                         Row(
@@ -582,38 +586,40 @@ fun NoteEditScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState())
-                                .padding(vertical = 4.dp)
+                                .padding(vertical = 2.dp)
                         ) {
                             if (isProtected) {
-                                Surface(
+                                AssistChip(
                                     onClick = { showProtectDialog = true },
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    modifier = Modifier.height(28.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Lock,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            modifier = Modifier.size(14.dp)
-                                        )
+                                    label = {
                                         Text(
                                             text = "Protected",
-                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
                                         )
-                                    }
-                                }
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.Lock,
+                                            contentDescription = "Protected note",
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    },
+                                    colors = AssistChipDefaults.assistChipColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        labelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        leadingIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    ),
+                                    border = null,
+                                    modifier = Modifier.height(28.dp)
+                                )
                             }
 
                             if (reminderAt != null) {
-                                val sdf = SimpleDateFormat("EEE, MMM dd HH:mm", Locale.getDefault())
-                                Surface(
+                                val remTime = reminderAt
+                                val sdf = remember { SimpleDateFormat("EEE, MMM dd HH:mm", Locale.getDefault()) }
+                                val timeStr = if (remTime != null) sdf.format(Date(remTime)) else ""
+                                InputChip(
+                                    selected = true,
                                     onClick = {
                                         val curNote = note
                                         if (curNote != null) {
@@ -621,63 +627,64 @@ fun NoteEditScreen(
                                             reminderAt = null
                                         }
                                     },
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.secondaryContainer,
-                                    modifier = Modifier.height(28.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
+                                    label = {
+                                        Text(
+                                            text = timeStr,
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
+                                        )
+                                    },
+                                    leadingIcon = {
                                         Icon(
                                             Icons.Default.Notifications,
                                             contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
                                             modifier = Modifier.size(14.dp)
                                         )
-                                        Text(
-                                            text = sdf.format(Date(reminderAt!!)),
-                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                                        )
+                                    },
+                                    trailingIcon = {
                                         Icon(
                                             Icons.Default.Close,
                                             contentDescription = "Remove reminder",
-                                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
                                             modifier = Modifier.size(14.dp)
                                         )
-                                    }
-                                }
+                                    },
+                                    colors = InputChipDefaults.inputChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        selectedLeadingIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        selectedTrailingIconColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                    ),
+                                    border = null,
+                                    modifier = Modifier.height(28.dp)
+                                )
                             }
 
                             tagNames.forEach { tag ->
-                                Surface(
+                                InputChip(
+                                    selected = false,
                                     onClick = {
                                         tagNames = tagNames - tag
                                     },
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    modifier = Modifier.height(28.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
+                                    label = {
                                         Text(
                                             text = "#$tag",
-                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                                            color = MaterialTheme.colorScheme.onSurface
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
                                         )
+                                    },
+                                    trailingIcon = {
                                         Icon(
                                             Icons.Default.Close,
                                             contentDescription = "Remove tag",
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.size(14.dp)
                                         )
-                                    }
-                                }
+                                    },
+                                    colors = InputChipDefaults.inputChipColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        labelColor = MaterialTheme.colorScheme.onSurface,
+                                        trailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    ),
+                                    border = null,
+                                    modifier = Modifier.height(28.dp)
+                                )
                             }
                         }
                     }

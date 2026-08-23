@@ -222,8 +222,13 @@ fun RichTextToolbar(
                                 .background(Color.Transparent)
                                 .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
                                 .clickable {
-                                    onApplyHighlight("")
-                                    showHighlightMenu = false
+                                    try {
+                                        onApplyHighlight("")
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("RichTextToolbar", "Error clearing highlight: ${e.message}")
+                                    } finally {
+                                        showHighlightMenu = false
+                                    }
                                 },
                             contentAlignment = Alignment.Center
                         ) {
@@ -237,8 +242,16 @@ fun RichTextToolbar(
                                     .background(option.color)
                                     .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), CircleShape)
                                     .clickable {
-                                        onApplyHighlight(option.hex)
-                                        showHighlightMenu = false
+                                        try {
+                                            val hex = option.hex
+                                            if (!hex.isNullOrBlank()) {
+                                                onApplyHighlight(hex)
+                                            }
+                                        } catch (e: Exception) {
+                                            android.util.Log.e("RichTextToolbar", "Error applying highlight color: ${e.message}")
+                                        } finally {
+                                            showHighlightMenu = false
+                                        }
                                     }
                             )
                         }
@@ -293,8 +306,13 @@ fun RichTextToolbar(
                                 .background(MaterialTheme.colorScheme.onSurface)
                                 .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
                                 .clickable {
-                                    onApplyTextColor("")
-                                    showColorMenu = false
+                                    try {
+                                        onApplyTextColor("")
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("RichTextToolbar", "Error clearing text color: ${e.message}")
+                                    } finally {
+                                        showColorMenu = false
+                                    }
                                 },
                             contentAlignment = Alignment.Center
                         ) {
@@ -308,8 +326,16 @@ fun RichTextToolbar(
                                     .background(option.color)
                                     .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), CircleShape)
                                     .clickable {
-                                        onApplyTextColor(option.hex)
-                                        showColorMenu = false
+                                        try {
+                                            val hex = option.hex
+                                            if (!hex.isNullOrBlank()) {
+                                                onApplyTextColor(hex)
+                                            }
+                                        } catch (e: Exception) {
+                                            android.util.Log.e("RichTextToolbar", "Error applying text color: ${e.message}")
+                                        } finally {
+                                            showColorMenu = false
+                                        }
                                     }
                             )
                         }
