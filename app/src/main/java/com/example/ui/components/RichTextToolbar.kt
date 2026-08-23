@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,7 +33,6 @@ import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.FormatStrikethrough
 import androidx.compose.material.icons.filled.FormatUnderlined
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -105,7 +105,6 @@ fun RichTextToolbar(
     onApplyTextColor: (hex: String) -> Unit,
     onInsertBulletList: (marker: String) -> Unit = {},
     onInsertNumberedList: (prefix: String) -> Unit = {},
-    onStartSpeechToText: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showHighlightMenu by remember { mutableStateOf(false) }
@@ -199,7 +198,8 @@ fun RichTextToolbar(
 
                 DropdownMenu(
                     expanded = showHighlightMenu,
-                    onDismissRequest = { showHighlightMenu = false }
+                    onDismissRequest = { showHighlightMenu = false },
+                    modifier = Modifier.widthIn(max = 280.dp)
                 ) {
                     Text(
                         text = "Highlight Color",
@@ -207,9 +207,28 @@ fun RichTextToolbar(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Reset / None highlight option
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(Color.Transparent)
+                                .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                                .clickable {
+                                    onApplyHighlight("")
+                                    showHighlightMenu = false
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("✕", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface))
+                        }
                         HIGHLIGHT_COLORS.forEach { option ->
                             Box(
                                 modifier = Modifier
@@ -250,7 +269,8 @@ fun RichTextToolbar(
 
                 DropdownMenu(
                     expanded = showColorMenu,
-                    onDismissRequest = { showColorMenu = false }
+                    onDismissRequest = { showColorMenu = false },
+                    modifier = Modifier.widthIn(max = 280.dp)
                 ) {
                     Text(
                         text = "Text Color",
@@ -258,9 +278,28 @@ fun RichTextToolbar(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Reset text color option
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.onSurface)
+                                .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                                .clickable {
+                                    onApplyTextColor("")
+                                    showColorMenu = false
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("A", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.surface))
+                        }
                         FONT_COLORS.forEach { option ->
                             Box(
                                 modifier = Modifier
@@ -641,21 +680,6 @@ fun RichTextToolbar(
                         }
                     )
                 }
-            }
-
-            ToolbarDivider()
-
-            // 14. Speech-to-Text Dictation
-            IconButton(
-                onClick = onStartSpeechToText,
-                modifier = Modifier.testTag("toolbar_speech_to_text")
-            ) {
-                Icon(
-                    Icons.Default.Mic,
-                    contentDescription = "Dictate Speech to Text",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
-                )
             }
         }
     }

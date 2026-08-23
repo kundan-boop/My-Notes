@@ -56,7 +56,9 @@ fun AppLockOverlay(
     val securityQuestion by settingsRepo.securityQuestion.collectAsState(initial = "What is your favorite book?")
     val securityAnswer by settingsRepo.securityAnswer.collectAsState(initial = "")
 
+    val lockType by settingsRepo.lockType.collectAsState(initial = "biometric")
     val isBiometricAvailable = remember { BiometricHelper.isBiometricAvailable(context) }
+    val isBiometricEnabled = lockType != "pin" && lockType != "none" && isBiometricAvailable
     val activity = context as? FragmentActivity
 
     var enteredPin by remember { mutableStateOf("") }
@@ -66,22 +68,23 @@ fun AppLockOverlay(
     var recoveryErrorMessage by remember { mutableStateOf<String?>(null) }
 
     fun triggerBiometricPrompt() {
-        if (activity != null && isBiometricAvailable) {
+        if (activity != null && isBiometricEnabled) {
             BiometricHelper.showBiometricPrompt(
                 activity = activity,
-                title = "Unlock My Notes",
-                subtitle = "Use fingerprint or face recognition to unlock",
-                negativeButtonText = "Use PIN",
+                title = "Authentication required",
+                subtitle = "Use your fingerprint or face to unlock",
+                description = "Confirm your identity to access your notes",
+                negativeButtonText = "Use PIN instead",
                 onSuccess = { onUnlocked() },
                 onError = { err -> errorMessage = err },
-                onFailed = { /* Fall back silently to PIN */ }
+                onFailed = { /* Failed or cancelled: fall back to screen with Try again & PIN options */ }
             )
         }
     }
 
-    // Default to native biometric unlock on open if available
-    LaunchedEffect(Unit) {
-        if (isBiometricAvailable && activity != null) {
+    // Default to native biometric unlock on open if biometric is available and enabled
+    LaunchedEffect(isBiometricEnabled) {
+        if (isBiometricEnabled && activity != null) {
             triggerBiometricPrompt()
         }
     }
@@ -116,7 +119,7 @@ fun AppLockOverlay(
             verticalArrangement = Arrangement.Center
         ) {
             Icon(
-                imageVector = if (isBiometricAvailable) Icons.Default.Fingerprint else Icons.Default.Lock,
+                imageVector = if (isBiometricEnabled) Icons.Default.Fingerprint else Icons.Default.Lock,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(64.dp)
@@ -133,22 +136,22 @@ fun AppLockOverlay(
             Spacer(Modifier.height(8.dp))
 
             Text(
-                text = if (isBiometricAvailable) "Use biometric authentication or enter 4-digit PIN" else "Enter your 4-digit PIN to continue",
+                text = if (isBiometricEnabled) "Use biometric authentication or enter 4-digit PIN" else "Enter your 4-digit PIN to continue",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(Modifier.height(24.dp))
 
-            // Biometric quick button if biometric is available
-            if (isBiometricAvailable && activity != null) {
+            // Biometric quick button if biometric is available and enabled
+            if (isBiometricEnabled && activity != null) {
                 FilledTonalButton(
                     onClick = { triggerBiometricPrompt() },
                     modifier = Modifier.testTag("app_lock_biometric_button")
                 ) {
                     Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Unlock with Biometrics")
+                    Text("Try again")
                 }
                 Spacer(Modifier.height(16.dp))
             }

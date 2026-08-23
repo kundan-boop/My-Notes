@@ -412,11 +412,11 @@ fun SettingsScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Share, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(12.dp))
-                        Text("Share App", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        Text("Share App & APK", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Share My Notes with friends and family via WhatsApp, Messages, Email, or other apps.",
+                        "Share My Notes with friends and family. Sends the APK installer file along with a complete feature overview via WhatsApp, Email, or messaging apps.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -429,7 +429,7 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Share App")
+                        Text("Share App & APK")
                     }
                 }
             }

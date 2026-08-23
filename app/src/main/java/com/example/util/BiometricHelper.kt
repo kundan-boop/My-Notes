@@ -17,9 +17,10 @@ object BiometricHelper {
 
     fun showBiometricPrompt(
         activity: FragmentActivity,
-        title: String = "Unlock My Notes",
-        subtitle: String = "Use fingerprint or face recognition to unlock",
-        negativeButtonText: String = "Use PIN",
+        title: String = "Authentication required",
+        subtitle: String = "Use your fingerprint or face to unlock",
+        description: String = "Confirm your identity to access your notes",
+        negativeButtonText: String = "Use PIN instead",
         onSuccess: () -> Unit,
         onError: (String) -> Unit = {},
         onFailed: () -> Unit = {}
@@ -51,6 +52,7 @@ object BiometricHelper {
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
             .setTitle(title)
             .setSubtitle(subtitle)
+            .setDescription(description)
             .setNegativeButtonText(negativeButtonText)
             .setConfirmationRequired(false)
             .build()

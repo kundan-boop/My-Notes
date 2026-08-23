@@ -13,7 +13,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -118,7 +120,6 @@ import com.example.util.ImageUtils
 import com.example.util.RichTextHelper
 import com.example.util.RichTextRenderer
 import com.example.util.ShareNoteHelper
-import com.example.util.SpeechToTextManager
 import com.example.util.TextAlignmentPreset
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -166,40 +167,6 @@ fun NoteEditScreen(
     var newChecklistText by remember { mutableStateOf("") }
 
     var isRecordingAudio by remember { mutableStateOf(false) }
-    var isListeningSpeech by remember { mutableStateOf(false) }
-    var speechToTextManager by remember { mutableStateOf<SpeechToTextManager?>(null) }
-
-    // Initialize SpeechToTextManager
-    DisposableEffect(Unit) {
-        val manager = SpeechToTextManager(
-            context = context,
-            onResult = { recognizedText ->
-                val separator = " "
-                richEditorState.insertText(separator + recognizedText)
-            },
-            onError = { error ->
-                Toast.makeText(context, "Voice dictation: $error", Toast.LENGTH_SHORT).show()
-                isListeningSpeech = false
-            },
-            onListeningStateChange = { listening ->
-                isListeningSpeech = listening
-            }
-        )
-        speechToTextManager = manager
-        onDispose {
-            manager.destroy()
-        }
-    }
-
-    val audioPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            speechToTextManager?.startListening()
-        } else {
-            Toast.makeText(context, "Microphone permission is required for speech dictation", Toast.LENGTH_SHORT).show()
-        }
-    }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -251,19 +218,6 @@ fun NoteEditScreen(
             calendar.get(Calendar.MONTH),
             calendar.get(Calendar.DAY_OF_MONTH)
         ).show()
-    }
-
-    fun startDictation() {
-        if (isListeningSpeech) {
-            speechToTextManager?.stopListening()
-        } else {
-            val permissionCheck = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
-            if (permissionCheck == PackageManager.PERMISSION_GRANTED) {
-                speechToTextManager?.startListening()
-            } else {
-                audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-            }
-        }
     }
 
     // Load Note
@@ -579,7 +533,6 @@ fun NoteEditScreen(
                     onApplyTextColor = { hex -> richEditorState.setTextColor(hex) },
                     onInsertBulletList = { marker -> richEditorState.toggleBulletList(marker) },
                     onInsertNumberedList = { prefix -> richEditorState.toggleNumberedList(prefix) },
-                    onStartSpeechToText = { startDictation() },
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("rich_text_toolbar")
@@ -620,29 +573,47 @@ fun NoteEditScreen(
                     }
                 }
 
-                // Tag Chips Row
+                // Tag Chips & Metadata Row (Compact Horizontal Scrollbar)
                 if (tagNames.isNotEmpty() || reminderAt != null || isProtected) {
                     item {
-                        FlowRow(
+                        Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 6.dp)
+                                .horizontalScroll(rememberScrollState())
+                                .padding(vertical = 4.dp)
                         ) {
                             if (isProtected) {
-                                FilterChip(
-                                    selected = true,
+                                Surface(
                                     onClick = { showProtectDialog = true },
-                                    label = { Text("Protected") },
-                                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                                )
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Lock,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = "Protected",
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                }
                             }
 
                             if (reminderAt != null) {
                                 val sdf = SimpleDateFormat("EEE, MMM dd HH:mm", Locale.getDefault())
-                                FilterChip(
-                                    selected = true,
+                                Surface(
                                     onClick = {
                                         val curNote = note
                                         if (curNote != null) {
@@ -650,21 +621,63 @@ fun NoteEditScreen(
                                             reminderAt = null
                                         }
                                     },
-                                    label = { Text(sdf.format(Date(reminderAt!!))) },
-                                    leadingIcon = { Icon(Icons.Default.Notifications, contentDescription = null) },
-                                    trailingIcon = { Icon(Icons.Default.Close, contentDescription = "Remove reminder") }
-                                )
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Notifications,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = sdf.format(Date(reminderAt!!)),
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Remove reminder",
+                                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
                             }
 
                             tagNames.forEach { tag ->
-                                FilterChip(
-                                    selected = true,
+                                Surface(
                                     onClick = {
                                         tagNames = tagNames - tag
                                     },
-                                    label = { Text("#$tag") },
-                                    trailingIcon = { Icon(Icons.Default.Close, contentDescription = "Remove tag") }
-                                )
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = "#$tag",
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Remove tag",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -699,41 +712,6 @@ fun NoteEditScreen(
                 }
 
 
-
-                // Speech Dictation Active Banner
-                if (isListeningSpeech) {
-                    item {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Default.Mic,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = "Listening... Speak clearly to dictate note.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                TextButton(onClick = { speechToTextManager?.stopListening() }) {
-                                    Text("Done")
-                                }
-                            }
-                        }
-                    }
-                }
 
                 // Attachments Carousel (with single image share & action dialog)
                 if (attachmentPaths.isNotEmpty()) {
